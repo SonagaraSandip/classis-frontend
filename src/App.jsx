@@ -1,5 +1,5 @@
 import {BrowserRouter , Routes , Route} from "react-router-dom";
-import AddStudent from "./pages/addStudent";
+import AddStudent from "./pages/AddStudent";
 import MarkEntry from './pages/MarkEntry';
 import StudentProfile from './pages/StudentProfile';
 
