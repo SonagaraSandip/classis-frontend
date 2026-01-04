@@ -1,22 +1,59 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-
-// Convert raw marks → class-wise structure
-export const buildClassWiseData = (marksData) => {
+// PREVIEW BUILDER – shows "-" instead of Absent
+export const buildPreviewClassWiseData = ({ students, marks }) => {
   const result = {};
 
-  marksData.forEach((item) => {
-    const std = item.studentId.standard;
+  students.forEach((student) => {
+    const std = student.standard;
+    if (!result[std]) result[std] = [];
 
-    if (!result[std]) {
-      result[std] = [];
-    }
+    const markEntry = marks.find(
+      (m) => m.studentId?._id?.toString() === student._id.toString()
+    );
 
     result[std].push({
-      name: item.studentId.name,
-      subject: item.testId.subject,
-      marks: `${item.obtainedMarks} / ${item.testId.totalMarks}`,
+      name: student.name,
+      subject: markEntry?.testId?.subject || "-",
+      markId: markEntry?._id || null,
+      marks: markEntry
+        ? `${markEntry.obtainedMarks} / ${markEntry.testId.totalMarks}`
+        : "Absent", // 👈 THIS IS THE KEY
+      obtainedMarks: markEntry?.obtainedMarks ?? null,
+    });
+  });
+
+  return result;
+};
+
+// Convert raw marks → class-wise structure
+export const buildClassWiseDataWithAbsent = ({ tests, marks, students }) => {
+  const result = {};
+
+  tests.forEach((test) => {
+    const std = test.standard;
+    if (!result[std]) result[std] = [];
+
+    const classStudents = students.filter((s) => s.standard === std);
+
+    classStudents.forEach((student) => {
+      const markEntry = marks.find(
+        (m) =>
+          m.studentId._id.toString() === student._id.toString() &&
+          m.testId._id.toString() === test._id.toString()
+      );
+
+      result[std].push({
+        name: student.name,
+        subject: test.subject,
+        markId: markEntry?._id || null,
+        marks: markEntry
+          ? `${markEntry.obtainedMarks} / ${test.totalMarks}`
+          : "Absent",
+
+        testDate: test.testDate,
+      });
     });
   });
 
@@ -44,7 +81,7 @@ export const generateClassWisePDF = (classData) => {
     doc.text(`Class ${std}`, 14, currentY);
     currentY += 6;
 
-    autoTable(doc , {
+    autoTable(doc, {
       startY: currentY,
       head: [["Student", "Subject", "Marks"]],
       body: rows.map((r) => [r.name, r.subject, r.marks]),

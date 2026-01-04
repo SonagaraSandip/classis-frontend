@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { User, Book, CheckCircle, Plus } from "lucide-react";
+import toast from "react-hot-toast";
 import API from "../api/api";
 
 const standards = ["2", "5", "7", "8"];
@@ -9,7 +10,6 @@ const AddStudent = () => {
   const [name, setName] = useState("");
   const [standard, setStandard] = useState("");
   const [subjects, setSubjects] = useState([]);
-  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const toggleSubject = (sub) => {
@@ -20,10 +20,9 @@ const AddStudent = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
 
     if (!name || !standard || subjects.length === 0) {
-      setMessage("Please fill all fields");
+      toast.error("Please fill all fields");
       return;
     }
 
@@ -35,12 +34,12 @@ const AddStudent = () => {
         subjects,
       });
 
-      setMessage("Student added successfully");
+      toast.success("Student added successfully");
       setName("");
       setStandard("");
       setSubjects([]);
     } catch (err) {
-      setMessage("Error while adding student");
+      toast.error("Error while adding student");
       console.error(err);
     } finally {
       setLoading(false);
@@ -57,8 +56,12 @@ const AddStudent = () => {
               <User className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Add New Student</h1>
-              <p className="text-gray-600 mt-1">Fill in the student details below</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Add New Student
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Fill in the student details below
+              </p>
             </div>
           </div>
         </div>
@@ -154,24 +157,6 @@ const AddStudent = () => {
               </button>
             </div>
           </form>
-
-          {/* Message Display */}
-          {message && (
-            <div className={`mt-6 p-4 rounded-lg ${
-              message.includes("successfully")
-                ? "bg-green-50 border border-green-200 text-green-700"
-                : "bg-red-50 border border-red-200 text-red-700"
-            }`}>
-              <div className="flex items-center">
-                {message.includes("successfully") ? (
-                  <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
-                ) : (
-                  <div className="h-5 w-5 mr-2">⚠️</div>
-                )}
-                <span>{message}</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

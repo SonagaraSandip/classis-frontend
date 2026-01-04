@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
+import toast from "react-hot-toast";
+
 import { Link } from "react-router-dom";
-import { buildClassWiseData, generateClassWisePDF } from "../utils/pdfUtils";
+import {
+  buildClassWiseDataWithAbsent,
+  buildPreviewClassWiseData,
+  generateClassWisePDF,
+} from "../utils/pdfUtils";
 import API from "../api/api";
 
 const standards = ["2", "5", "7", "8"];
@@ -10,13 +16,14 @@ const MarkEntry = () => {
   const [standard, setStandard] = useState("");
   const [subject, setSubject] = useState("");
   const [students, setStudents] = useState([]);
-  const [testName, setTestName] = useState("");
+  const [testDate, setTestDate] = useState("");
   const [totalMarks, setTotalMarks] = useState("");
   const [marks, setMarks] = useState({});
-  const [message, setMessage] = useState("");
+  const [previewData, setPreviewData] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const [createdTestId, setCreatedTestId] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
+  const [editValue, setEditValue] = useState("");
 
   useEffect(() => {
     if (!standard || !subject) return;
@@ -30,7 +37,7 @@ const MarkEntry = () => {
         setStudents(res.data);
       } catch (err) {
         console.error(err);
-        setMessage("Error fetching students");
+        toast.error("Error fetching students");
       } finally {
         setLoading(false);
       }
@@ -45,35 +52,44 @@ const MarkEntry = () => {
   };
 
   const handleSubmit = async () => {
-    setMessage("");
+    if (!testDate) {
+      toast.error("Test Date required");
+      return;
+    }
 
-    if (!testName || !totalMarks) {
-      setMessage("Test name and total marks required");
+    if (!totalMarks) {
+      toast.error("Toatl marks is required");
       return;
     }
 
     if (students.length === 0) {
-      setMessage("No students found");
+      toast.error("No students found");
       return;
     }
 
     setLoading(true);
-    try {
-      const testRes = await API.post("/tests", {
-        standard,
-        subject,
-        testName,
-        totalMarks: Number(totalMarks),
-      });
 
+    try {
+      const testRes = await API.post(
+        "/tests",
+        {
+          standard,
+          subject,
+          testDate,
+          totalMarks: Number(totalMarks),
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
       const testId = testRes.data._id;
 
       if (!testId) {
-        setMessage("Test creation failed");
+        toast.error("Test creation failed");
         return;
       }
-
-      setCreatedTestId(testId);
 
       // Save marks for each student
       for (let student of students) {
@@ -87,41 +103,86 @@ const MarkEntry = () => {
         });
       }
 
-      setMessage("Marks saved successfully");
-      setTestName("");
+      const previewRes = await API.get(`/marks/by-date?testDate=${testDate}`);
+
+      const grouped = buildPreviewClassWiseData({
+        students,
+        subjects,
+        marks: previewRes.data,
+      });
+      setPreviewData(grouped);
+
+      toast.success("Marks saved successfully");
+      // setTestDate("");
       setTotalMarks("");
       setMarks({});
     } catch (err) {
-      console.error(err);
-      setMessage("Error saving marks");
+      toast.error(`Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  //download pdf
   const handleDownloadPDF = async () => {
-    if (!createdTestId) {
-      setMessage("Please save marks before downloading PDF");
+    if (!testDate) {
+      toast.error("Please select test date");
       return;
     }
 
     try {
       //fetxh row mark data from backend
-      const res = await API.get(`marks/pdf-data?testId=${createdTestId}`);
+      const res = await API.get(`marks/pdf-by-date?testDate=${testDate}`);
 
       // 2️⃣ Convert raw data → class-wise structure
-      const classWiseData = buildClassWiseData(res.data);
+      const classWiseData = buildClassWiseDataWithAbsent(res.data);
 
       // 3️⃣ Generate PDF
       generateClassWisePDF(classWiseData);
+      toast.success("PDF downloaded successfully", { id: "pdf" });
     } catch (err) {
       console.error(err);
-      setMessage("Failed to generate PDF");
+      toast.error("Failed to generate PDF");
     }
   };
 
+  //edit marks
+  const startEdit = (row) => {
+    setEditingRow(row);
+    setEditValue(row.obtainedMarks ?? "");
+  };
+
+  const saveEdit = async () => {
+    if (!editingRow) return;
+
+    if (editingRow.markId) {
+      //update exiting rows
+      await API.put(`/marks/${editingRow.markId}`, {
+        obtainedMarks: Number(editValue),
+      });
+    } else {
+      //create a new mark (Absent -> Present)
+      await API.post(`/marks`, {
+        studentId: editingRow.studentId,
+        testId: editingRow.testId,
+        obtainedMarks: Number(editValue),
+      });
+    }
+
+    setEditingRow(null);
+
+    const previewRes = await API.get(`/marks/by-date?testDate=${testDate}`);
+    setPreviewData(
+      buildPreviewClassWiseData({
+        students,
+        subjects,
+        marks: previewRes.data,
+      })
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="relative min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -133,6 +194,12 @@ const MarkEntry = () => {
             className="inline-flex items-center mt-4 text-blue-600 hover:text-blue-800 font-medium"
           >
             + Add New Student
+          </Link>
+          <Link
+            to="/students"
+            className="inline-flex items-center ml-20 mt-4 text-blue-600 hover:text-blue-800 font-medium"
+          >
+            + Student list
           </Link>
         </div>
 
@@ -181,22 +248,6 @@ const MarkEntry = () => {
           </div>
         </div>
 
-        {/* Message Display */}
-        {message && (
-          <div
-            className={`mt-6 p-4 rounded-lg ${
-              message.includes("successfully")
-                ? "bg-green-50 border border-green-200 text-green-700"
-                : message.includes("required") ||
-                  message.includes("No students")
-                ? "bg-yellow-50 border border-yellow-200 text-yellow-700"
-                : "bg-red-50 border border-red-200 text-red-700"
-            }`}
-          >
-            {message}
-          </div>
-        )}
-
         {/* Loading State */}
         {loading && (
           <div className="text-center py-8">
@@ -216,10 +267,10 @@ const MarkEntry = () => {
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1">
                   <input
-                    type="text"
-                    placeholder="Test name"
-                    value={testName}
-                    onChange={(e) => setTestName(e.target.value)}
+                    type="date"
+                    placeholder="Test Date"
+                    value={testDate}
+                    onChange={(e) => setTestDate(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
@@ -324,6 +375,59 @@ const MarkEntry = () => {
           </div>
         )}
 
+        {Object.keys(previewData).length > 0 && (
+          <div>
+            <h2 className="text-lg font-bold mb-4">
+              Entered Marks Preview (Test Date: {testDate})
+            </h2>
+
+            {Object.entries(previewData).map(([std, rows]) => (
+              <div key={std} className="mb-6">
+                <h3 className="font-semibold text-gray-800 mb-2">
+                  Class {std}
+                </h3>
+
+                <table className="w-full text-sm border">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-left">Student</th>
+                      <th className="p-2 text-left">Subject</th>
+                      <th className="p-2 text-left">Marks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr
+                        key={i}
+                        className={`border-t ${
+                          r.marks === "Absent" ? "bg-red-200" : ""
+                        }`}
+                      >
+                        <td className="p-2">{r.name}</td>
+                        <td className="p-2">{r.subject}</td>
+                        <td className="p-2">
+                          {r.marks === "Absent" || r.marks === "-"
+                            ? "-"
+                            : r.marks}
+                        </td>
+
+                        <td className="p-2">
+                          <button
+                            onClick={() => startEdit(r)}
+                            className="text-blue-600 hover:underline text-sm"
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={handleDownloadPDF}
           style={{ marginTop: 10 }}
@@ -332,6 +436,39 @@ const MarkEntry = () => {
           Download Class-wise PDF
         </button>
       </div>
+      {editingRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          {/* Modal box */}
+          <div className="w-72 p-4 border rounded-lg bg-blue-100 shadow-lg">
+            <h3 className="font-semibold mb-3 text-gray-800">
+              Edit Marks – {editingRow.name}
+            </h3>
+
+            <input
+              type="number"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              className="w-full border px-3 py-2 rounded mb-4"
+            />
+
+            <div className="flex justify-between gap-3">
+              <button
+                onClick={saveEdit}
+                className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700"
+              >
+                Save
+              </button>
+
+              <button
+                onClick={() => setEditingRow(null)}
+                className="flex-1 bg-gray-400 text-white py-2 rounded hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
