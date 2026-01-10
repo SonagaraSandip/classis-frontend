@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import gujaratiFont from "./gujaratiFont";
 
 // PREVIEW BUILDER – shows "-" instead of Absent
 export const buildPreviewClassWiseData = ({ students, marks }) => {
@@ -10,17 +11,29 @@ export const buildPreviewClassWiseData = ({ students, marks }) => {
     if (!result[std]) result[std] = [];
 
     const markEntry = marks.find(
-      (m) => m.studentId?._id?.toString() === student._id.toString()
+      (m) => m.studentId._id.toString() === student._id.toString()
     );
+
+    let display;
+    let editable = true;
+
+    if (!markEntry) {
+      display = "-"; //not entered
+    } else if (markEntry.status === "ABSENT") {
+      display = "Absent";
+      editable = false;
+    } else {
+      display = `${markEntry.obtainedMarks} / ${markEntry.testId.totalMarks}`;
+    }
 
     result[std].push({
       name: student.name,
       subject: markEntry?.testId?.subject || "-",
       markId: markEntry?._id || null,
-      marks: markEntry
-        ? `${markEntry.obtainedMarks} / ${markEntry.testId.totalMarks}`
-        : "Absent", // 👈 THIS IS THE KEY
-      obtainedMarks: markEntry?.obtainedMarks ?? null,
+      status: markEntry?.status || "NOT_ENTERED",
+      marks: display,
+      editable,
+      totalMarks: markEntry?.testId?.totalMarks || 0,
     });
   });
 
@@ -45,12 +58,15 @@ export const buildClassWiseDataWithAbsent = ({ tests, marks, students }) => {
       );
 
       result[std].push({
+        studentId: student._id,
         name: student.name,
         subject: test.subject,
         markId: markEntry?._id || null,
         marks: markEntry
-          ? `${markEntry.obtainedMarks} / ${test.totalMarks}`
-          : "Absent",
+          ? markEntry.status === "ABSENT"
+            ? "ABSENT"
+            : `${markEntry.obtainedMarks} / ${test.totalMarks}`
+          : "ABSENT",
 
         testDate: test.testDate,
       });
@@ -63,6 +79,11 @@ export const buildClassWiseDataWithAbsent = ({ tests, marks, students }) => {
 // Generate PDF
 export const generateClassWisePDF = (classData) => {
   const doc = new jsPDF();
+
+  //register gujrati font
+  doc.addFileToVFS("Gujarati.ttf", gujaratiFont);
+  doc.addFont("Gujarati.ttf", "Gujarati", "normal");
+  doc.setFont("Gujarati");
 
   let currentY = 20;
   const pageHeight = doc.internal.pageSize.height;
@@ -78,14 +99,18 @@ export const generateClassWisePDF = (classData) => {
     }
 
     doc.setFontSize(14);
-    doc.text(`Class ${std}`, 14, currentY);
+    doc.text(`ધોરણ  ${std}`, 14, currentY);
     currentY += 6;
 
     autoTable(doc, {
       startY: currentY,
-      head: [["Student", "Subject", "Marks"]],
+      head: [["Name", "Subjects", "Marks "]],
       body: rows.map((r) => [r.name, r.subject, r.marks]),
-      styles: { fontSize: 10 },
+      styles: { font: "Gujarati", fontSize: 10 },
+      headStyles: {
+        font: "Gujarati",
+        fontStyle : "normal"
+      },
     });
 
     currentY = doc.lastAutoTable.finalY + 10;

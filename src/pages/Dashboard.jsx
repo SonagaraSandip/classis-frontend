@@ -12,7 +12,7 @@ import API from "../api/api";
 const standards = ["2", "5", "7", "8"];
 const subjects = ["Maths", "Science", "English"];
 
-const MarkEntry = () => {
+const Dashboard = () => {
   const [standard, setStandard] = useState("");
   const [subject, setSubject] = useState("");
   const [students, setStudents] = useState([]);
@@ -21,6 +21,8 @@ const MarkEntry = () => {
   const [marks, setMarks] = useState({});
   const [previewData, setPreviewData] = useState({});
   const [loading, setLoading] = useState(false);
+  const [absentMap, setAbsentMap] = useState({});
+  const [existingTestId, setExistingTestId] = useState(null);
 
   const [editingRow, setEditingRow] = useState(null);
   const [editValue, setEditValue] = useState("");
@@ -45,6 +47,64 @@ const MarkEntry = () => {
     fetchStudent();
   }, [standard, subject]);
 
+  //check data exists on selected date
+  useEffect(() => {
+    if (!testDate) return;
+
+    const fetchExistingData = async () => {
+      try {
+        const res = await API.get(`/marks/pdf-by-date?testDate=${testDate}`);
+
+        if (!res.data || !res.data.tests || res.data.tests.length === 0) {
+          setExistingTestId(null);
+          setPreviewData({});
+          setMarks({});
+          setAbsentMap({});
+          return;
+        }
+
+        // ✅ THIS is the correct place
+        const test = res.data.tests.find(
+          (t) => t.standard === standard && t.subject === subject
+        );
+
+        if (test) {
+          setExistingTestId(test._id);
+          setTotalMarks(test.totalMarks);
+        } else {
+          setExistingTestId(null);
+        }
+
+        // build preview
+        setPreviewData(buildClassWiseDataWithAbsent(res.data));
+
+        // hydrate marks + absentMap
+        const newMarks = {};
+        const newAbsentMap = {};
+
+        res.data.marks.forEach((m) => {
+          if (
+            m.testId.subject === subject &&
+            m.studentId.standard === standard
+          ) {
+            if (m.status === "ABSENT") {
+              newAbsentMap[m.studentId._id] = true;
+            } else {
+              newMarks[m.studentId._id] = m.obtainedMarks;
+            }
+          }
+        });
+
+        setMarks(newMarks);
+        setAbsentMap(newAbsentMap);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchExistingData();
+  }, [testDate, standard, subject]);
+
   const handleMarkChange = (studentId, value) => {
     const numValue = Number(value);
     if (numValue < 0) return;
@@ -57,8 +117,8 @@ const MarkEntry = () => {
       return;
     }
 
-    if (!totalMarks) {
-      toast.error("Toatl marks is required");
+    if (!existingTestId && !totalMarks) {
+      toast.error("Total marks is required");
       return;
     }
 
@@ -67,57 +127,110 @@ const MarkEntry = () => {
       return;
     }
 
+    // 🔒 PRE-VALIDATION (ALL OR NOTHING)
+    for (let student of students) {
+      if (absentMap[student._id]) continue;
+
+      const obtainedMarks = marks[student._id];
+      if (!Number.isFinite(obtainedMarks)) continue;
+
+      if (obtainedMarks > Number(totalMarks)) {
+        toast.error(
+          `${student.name}: Marks cannot be greater than ${totalMarks}`
+        );
+        return; // ⛔ STOP BEFORE ANY SAVE
+      }
+    }
+
     setLoading(true);
 
     try {
-      const testRes = await API.post(
-        "/tests",
-        {
+      let testId = existingTestId;
+
+      // ✅ CREATE MODE: only if test does NOT exist
+      if (!existingTestId) {
+        const testRes = await API.post("/tests", {
           standard,
           subject,
           testDate,
           totalMarks: Number(totalMarks),
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const testId = testRes.data._id;
-
-      if (!testId) {
-        toast.error("Test creation failed");
-        return;
-      }
-
-      // Save marks for each student
-      for (let student of students) {
-        const obtainedMarks = marks[student._id];
-        if (!Number.isFinite(obtainedMarks)) continue;
-
-        await API.post("/marks", {
-          studentId: student._id,
-          testId,
-          obtainedMarks,
         });
+
+        testId = testRes.data._id;
+
+        if (!testId) {
+          toast.error("Test creation failed");
+          return;
+        }
       }
 
-      const previewRes = await API.get(`/marks/by-date?testDate=${testDate}`);
+      // ✅ SAVE / UPDATE MARKS
+      for (let student of students) {
+        const isAbsent = absentMap[student._id];
 
-      const grouped = buildPreviewClassWiseData({
-        students,
-        subjects,
-        marks: previewRes.data,
-      });
-      setPreviewData(grouped);
+        // find existing mark (if any) from previewData
+        const existingRow =
+          previewData?.[standard]?.find((r) => r.studentId === student._id) ||
+          null;
 
-      toast.success("Marks saved successfully");
-      // setTestDate("");
-      setTotalMarks("");
+        // ABSENT
+        if (isAbsent) {
+          if (existingRow?.markId) {
+            await API.put(`/marks/${existingRow.markId}`, {
+              status: "ABSENT",
+            });
+          } else {
+            await API.post("/marks", {
+              studentId: student._id,
+              testId,
+              status: "ABSENT",
+            });
+          }
+          continue;
+        }
+
+        const obtainedMarks = marks[student._id];
+
+        //skip if absent
+        if (absentMap[student._id]) continue;
+
+        //skip id empty
+        if (!Number.isFinite(obtainedMarks)) continue;
+        // Hard block
+
+        // PRESENT
+        if (existingRow?.markId) {
+          // update
+          await API.put(`/marks/${existingRow.markId}`, {
+            obtainedMarks,
+          });
+        } else {
+          // create
+          await API.post("/marks", {
+            studentId: student._id,
+            testId,
+            obtainedMarks,
+            status: "PRESENT",
+          });
+        }
+      }
+
+      // 🔄 Refresh preview
+      const previewRes = await API.get(
+        `/marks/pdf-by-date?testDate=${testDate}`
+      );
+
+      setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+
+      toast.success(
+        existingTestId
+          ? "Marks updated successfully"
+          : "Marks saved successfully"
+      );
+
       setMarks({});
     } catch (err) {
-      toast.error(`Error: ${err.response?.data?.message || err.message}`);
+      toast.error(err.response?.data?.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -148,6 +261,10 @@ const MarkEntry = () => {
 
   //edit marks
   const startEdit = (row) => {
+    if (row.status === "ABSENT") {
+      toast.error("Cannot edit absent student");
+      return;
+    }
     setEditingRow(row);
     setEditValue(row.obtainedMarks ?? "");
   };
@@ -155,19 +272,16 @@ const MarkEntry = () => {
   const saveEdit = async () => {
     if (!editingRow) return;
 
-    if (editingRow.markId) {
-      //update exiting rows
-      await API.put(`/marks/${editingRow.markId}`, {
-        obtainedMarks: Number(editValue),
-      });
-    } else {
-      //create a new mark (Absent -> Present)
-      await API.post(`/marks`, {
-        studentId: editingRow.studentId,
-        testId: editingRow.testId,
-        obtainedMarks: Number(editValue),
-      });
+    if (Number(editValue) > Number(editingRow.totalMarks)) {
+      toast.error("Marks cannot exceed total marks");
+      return;
     }
+
+    await API.put(`/marks/${editingRow.markId}`, {
+      obtainedMarks: Number(editValue),
+    });
+
+    toast.success("Marks updated");
 
     setEditingRow(null);
 
@@ -175,11 +289,48 @@ const MarkEntry = () => {
     setPreviewData(
       buildPreviewClassWiseData({
         students,
-        subjects,
         marks: previewRes.data,
       })
     );
   };
+
+  const toggleAbsent = (studentId) => {
+    setAbsentMap((prev) => {
+      const isAbsent = !prev[studentId];
+
+      return {
+        ...prev,
+        [studentId]: isAbsent,
+      };
+    });
+
+    //clear marks if absent
+    setMarks((prev) => {
+      const copy = { ...prev };
+      delete copy[studentId];
+      return copy;
+    });
+  };
+
+  // const markAbsent = async (row) => {
+  //   try {
+  //     await API.put(`marks/${row.markId}`, {
+  //       status: "ABSENT",
+  //     });
+
+  //     toast.success(`${row.name} marked absent`);
+
+  //     const previewRes = await API.get(
+  //       `/marks/pdf-by-date?testDate=${testDate}`
+  //     );
+
+  //     setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+
+  //     // eslint-disable-next-line no-unused-vars
+  //   } catch (error) {
+  //     toast.error("Failed to mark absent");
+  //   }
+  // };
 
   return (
     <div className="relative min-h-screen bg-gray-50 p-4 md:p-8">
@@ -256,6 +407,12 @@ const MarkEntry = () => {
           </div>
         )}
 
+        {existingTestId && (
+          <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
+            ℹ️ You are editing an existing test. Total marks are locked.
+          </div>
+        )}
+
         {/* Students List */}
         {students.length > 0 && !loading && (
           <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -279,6 +436,7 @@ const MarkEntry = () => {
                     type="number"
                     placeholder="Total marks"
                     value={totalMarks}
+                    disabled={!!existingTestId}
                     onChange={(e) => setTotalMarks(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
@@ -321,23 +479,29 @@ const MarkEntry = () => {
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center gap-3">
                             <input
                               type="number"
                               value={marks[student._id] || ""}
                               onChange={(e) =>
                                 handleMarkChange(student._id, e.target.value)
                               }
-                              min="0"
-                              max={totalMarks || 100}
-                              placeholder="Enter marks"
-                              className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                              disabled={absentMap[student._id]}
+                              className={`w-24 px-3 py-2 border rounded-lg ${
+                                absentMap[student._id]
+                                  ? "bg-red-200 cursor-not-allowed"
+                                  : "border-gray-300"
+                              }`}
                             />
-                            {totalMarks && (
-                              <span className="text-gray-500 text-sm">
-                                / {totalMarks}
-                              </span>
-                            )}
+
+                            <label className="flex items-center gap-1 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={!!absentMap[student._id]}
+                                onChange={() => toggleAbsent(student._id)}
+                              />
+                              Absent
+                            </label>
                           </div>
                         </td>
                       </tr>
@@ -400,15 +564,24 @@ const MarkEntry = () => {
                       <tr
                         key={i}
                         className={`border-t ${
-                          r.marks === "Absent" ? "bg-red-200" : ""
+                          r.marks === "ABSENT" ? "bg-red-200" : ""
                         }`}
                       >
                         <td className="p-2">{r.name}</td>
                         <td className="p-2">{r.subject}</td>
                         <td className="p-2">
-                          {r.marks === "Absent" || r.marks === "-"
+                          {r.marks === "ABSENT" || r.marks === "-"
                             ? "-"
                             : r.marks}
+                        </td>
+
+                        <td>
+                          {/* {r.status !== "ABSENT" && (
+                            <input
+                              type="checkbox"
+                              onChange={() => markAbsent(r)}
+                            />
+                          )} */}
                         </td>
 
                         <td className="p-2">
@@ -473,4 +646,4 @@ const MarkEntry = () => {
   );
 };
 
-export default MarkEntry;
+export default Dashboard;

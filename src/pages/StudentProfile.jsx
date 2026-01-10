@@ -67,8 +67,8 @@ const StudentProfile = () => {
 
   // Calculate stats
   const totalTests = history.length;
-  const presentTests = history.filter((row) => row.status === "Present").length;
-  const absentTests = history.filter((row) => row.status === "Absent").length;
+  const presentTests = history.filter((row) => row.status === "PRESENT").length;
+  const absentTests = history.filter((row) => row.status === "ABSENT").length;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -204,7 +204,7 @@ const StudentProfile = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {history.map((row, index) => {
-                    const isPresent = row.status === "Present";
+                    const isPresent = row.status === "PRESENT";
 
                     return (
                       <tr
