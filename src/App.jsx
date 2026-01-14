@@ -1,10 +1,10 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Login from "./pages/Login";
-import ProctectedRoute from "./pages/ProtectedRoute";
+import ProtectedRoute from "./pages/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import AddStudent from "./pages/AddStudent";
-import MarkEntry from "./pages/Dashboard";
+// import MarkEntry from "./pages/Dashboard";
 import StudentProfile from "./pages/StudentProfile";
 import StudentList from "./pages/StudentsList";
 
@@ -18,9 +18,9 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            <ProctectedRoute>
+            <ProtectedRoute>
               <Dashboard />
-            </ProctectedRoute>
+            </ProtectedRoute>
           }
         />
         <Route path="/add-student" element={<AddStudent />} />

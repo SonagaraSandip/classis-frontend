@@ -7,18 +7,19 @@ import API from "../api/api";
 const Login = () => {
   const [key, setkey] = useState("");
   const [password, setPassword] = useState(false);
-  const naviagte = useNavigate();
+  const navigate = useNavigate();
 
   const submit = async () => {
-    if (!key.trim) {
-      toast.error("please enter jkey");
+    if (!key.trim()) {
+      toast.error("please enter key");
+      return;
     }
 
     try {
       const res = await API.post("/auth/login", { key });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", "teacher");
-      naviagte("/dashboard");
+      navigate("/dashboard");
       toast.success("login successful as a teacher");
     } catch {
       toast.error("Invalid master key");
@@ -30,7 +31,7 @@ const Login = () => {
       const res = await API.post("/auth/guest");
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", "guest");
-      naviagte("/dashboard");
+      navigate("/dashboard");
       toast.success("Guest Login successful");
     } catch {
       toast.error("Guest login failed");

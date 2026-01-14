@@ -1,27 +1,19 @@
 import React, { useState } from "react";
-import { User, Book, CheckCircle, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { User, Book, Plus, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import API from "../api/api";
-
-const standards = ["2", "5", "7", "8"];
-const subjectsList = ["Maths", "Science", "English"];
+import { subjectsByStandard } from "../utils/subjectsByStandard";
 
 const AddStudent = () => {
   const [name, setName] = useState("");
   const [standard, setStandard] = useState("");
-  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const toggleSubject = (sub) => {
-    setSubjects((prev) =>
-      prev.includes(sub) ? prev.filter((s) => s !== sub) : [...prev, sub]
-    );
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!name || !standard || subjects.length === 0) {
+    if (!name.trim() || !standard) {
       toast.error("Please fill all fields");
       return;
     }
@@ -31,13 +23,11 @@ const AddStudent = () => {
       await API.post("/students", {
         name,
         standard,
-        subjects,
       });
 
       toast.success("Student added successfully");
       setName("");
       setStandard("");
-      setSubjects([]);
     } catch (err) {
       toast.error("Error while adding student");
       console.error(err);
@@ -47,45 +37,54 @@ const AddStudent = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="max-w-md mx-auto">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium text-sm"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Link>
+        </div>
+
+        {/* Header Card */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
           <div className="flex items-center mb-4">
-            <div className="p-3 bg-blue-100 rounded-lg mr-4">
+            <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
               <User className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Add New Student
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Fill in the student details below
+              <h1 className="text-xl font-bold text-gray-900">Add New Student</h1>
+              <p className="text-gray-600 text-sm mt-1">
+                Register a new student in the system
               </p>
             </div>
           </div>
         </div>
 
-        {/* Form */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Form Card */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <form onSubmit={handleSubmit} className="p-6">
             {/* Name Field */}
-            <div>
+            <div className="mb-5">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Student Name
+                Student Full Name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Enter full name"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Enter student's full name"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                 required
               />
             </div>
 
             {/* Standard Field */}
-            <div>
+            <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <Book className="h-4 w-4 inline mr-1" />
                 Class Standard
@@ -93,70 +92,60 @@ const AddStudent = () => {
               <select
                 value={standard}
                 onChange={(e) => setStandard(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors appearance-none"
                 required
               >
                 <option value="">Select Class</option>
-                {standards.map((std) => (
-                  <option key={std} value={std} className="py-2">
+                {Object.keys(subjectsByStandard).map((std) => (
+                  <option key={std} value={std}>
                     Class {std}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Subjects Field */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Select Subjects
-              </label>
-              <div className="flex flex-wrap gap-3">
-                {subjectsList.map((sub) => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => toggleSubject(sub)}
-                    className={`px-4 py-2 rounded-lg border transition-colors ${
-                      subjects.includes(sub)
-                        ? "bg-blue-50 border-blue-300 text-blue-700"
-                        : "bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <div className="flex items-center">
-                      {subjects.includes(sub) && (
-                        <CheckCircle className="h-4 w-4 mr-2 text-blue-600" />
-                      )}
-                      {sub}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <p className="text-sm text-gray-500 mt-2">
-                Selected: {subjects.join(", ") || "None"}
-              </p>
-            </div>
-
             {/* Submit Button */}
-            <div className="pt-4 border-t border-gray-200">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
-              >
-                {loading ? (
-                  <>
-                    <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-5 w-5 mr-2" />
-                    Add Student
-                  </>
-                )}
-              </button>
+            <button
+              type="submit"
+              disabled={loading || !name.trim() || !standard}
+              className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+            >
+              {loading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Adding Student...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-5 w-5 mr-2" />
+                  Add Student
+                </>
+              )}
+            </button>
+
+            {/* Quick Info */}
+            <div className="mt-6 pt-5 border-t border-gray-200">
+              <div className="text-sm text-gray-500">
+                <p className="mb-2">✅ Student will be added to:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Class {standard || "Selected Class"}</li>
+                  <li>All subjects for that class</li>
+                  <li>Available for marks entry immediately</li>
+                </ul>
+              </div>
             </div>
           </form>
+        </div>
+
+        {/* Additional Options */}
+        <div className="mt-6 text-center">
+          <Link
+            to="/students"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium text-sm"
+          >
+            <User className="h-4 w-4 mr-2" />
+            View All Students
+          </Link>
         </div>
       </div>
     </div>

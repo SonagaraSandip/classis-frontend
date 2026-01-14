@@ -1,647 +1,679 @@
-import React, { useState, useEffect } from "react";
-import toast from "react-hot-toast";
-
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  buildClassWiseDataWithAbsent,
-  buildPreviewClassWiseData,
-  generateClassWisePDF,
-} from "../utils/pdfUtils";
+import LogoutButton from "./LogoutButton";
+import toast from "react-hot-toast";
 import API from "../api/api";
-
-const standards = ["2", "5", "7", "8"];
-const subjects = ["Maths", "Science", "English"];
+import { subjectsByStandard } from "../utils/subjectsByStandard";
+import { buildClassWiseDataWithAbsent } from "../utils/pdfUtils";
+import {
+  Calendar,
+  Users,
+  BookOpen,
+  Award,
+  CheckCircle,
+  XCircle,
+  Download,
+  Save,
+  UserPlus,
+} from "lucide-react";
 
 const Dashboard = () => {
   const [standard, setStandard] = useState("");
-  const [subject, setSubject] = useState("");
-  const [students, setStudents] = useState([]);
   const [testDate, setTestDate] = useState("");
-  const [totalMarks, setTotalMarks] = useState("");
-  const [marks, setMarks] = useState({});
+  const [globalSubject, setGlobalSubject] = useState("");
+  const [globalTotalMarks, setGlobalTotalMarks] = useState("");
+
+  const [students, setStudents] = useState([]);
+  const [marksByStudent, setMarksByStudent] = useState({});
+  const [absentByStudent, setAbsentByStudent] = useState({});
+  const [specialByStudent, setSpecialByStudent] = useState({});
+  const [subjectByStudent, setSubjectByStudent] = useState({});
+  const [totalMarksByStudent, setTotalMarksByStudent] = useState({});
+
   const [previewData, setPreviewData] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [absentMap, setAbsentMap] = useState({});
-  const [existingTestId, setExistingTestId] = useState(null);
+  const [savingMarks, setSavingMarks] = useState(false);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
-  const [editingRow, setEditingRow] = useState(null);
-  const [editValue, setEditValue] = useState("");
-
+  /* ---------------- FETCH STUDENTS ---------------- */
   useEffect(() => {
-    if (!standard || !subject) return;
+    if (!standard) return;
 
-    const fetchStudent = async () => {
-      setLoading(true);
-      try {
-        const res = await API.get(
-          `/students?standard=${standard}&subject=${subject}`
-        );
+    setLoadingStudents(true);
+    API.get(`/students?standard=${standard}`)
+      .then((res) => {
         setStudents(res.data);
-      } catch (err) {
-        console.error(err);
-        toast.error("Error fetching students");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStudent();
-  }, [standard, subject]);
+      })
+      .catch(() => toast.error("Failed to load students"))
+      .finally(() => setLoadingStudents(false));
+  }, [standard]);
 
-  //check data exists on selected date
+  /* ---------------- FETCH PREVIEW BY DATE ---------------- */
   useEffect(() => {
     if (!testDate) return;
 
-    const fetchExistingData = async () => {
+    const fetchPreview = async () => {
       try {
         const res = await API.get(`/marks/pdf-by-date?testDate=${testDate}`);
-
-        if (!res.data || !res.data.tests || res.data.tests.length === 0) {
-          setExistingTestId(null);
+        if (!res.data?.tests?.length) {
           setPreviewData({});
-          setMarks({});
-          setAbsentMap({});
           return;
         }
-
-        // ✅ THIS is the correct place
-        const test = res.data.tests.find(
-          (t) => t.standard === standard && t.subject === subject
-        );
-
-        if (test) {
-          setExistingTestId(test._id);
-          setTotalMarks(test.totalMarks);
-        } else {
-          setExistingTestId(null);
-        }
-
-        // build preview
         setPreviewData(buildClassWiseDataWithAbsent(res.data));
-
-        // hydrate marks + absentMap
-        const newMarks = {};
-        const newAbsentMap = {};
-
-        res.data.marks.forEach((m) => {
-          if (
-            m.testId.subject === subject &&
-            m.studentId.standard === standard
-          ) {
-            if (m.status === "ABSENT") {
-              newAbsentMap[m.studentId._id] = true;
-            } else {
-              newMarks[m.studentId._id] = m.obtainedMarks;
-            }
-          }
-        });
-
-        setMarks(newMarks);
-        setAbsentMap(newAbsentMap);
-      } catch (err) {
-        console.error(err);
+      } catch {
+        toast.error("Failed to load preview");
       }
     };
+    fetchPreview();
+  }, [testDate]);
 
-    fetchExistingData();
-  }, [testDate, standard, subject]);
-
+  /* ---------------- HANDLERS ---------------- */
   const handleMarkChange = (studentId, value) => {
     const numValue = Number(value);
     if (numValue < 0) return;
-    setMarks((prev) => ({ ...prev, [studentId]: numValue }));
-  };
 
-  const handleSubmit = async () => {
-    if (!testDate) {
-      toast.error("Test Date required");
-      return;
-    }
+    setMarksByStudent((prev) => ({
+      ...prev,
+      [studentId]: numValue,
+    }));
 
-    if (!existingTestId && !totalMarks) {
-      toast.error("Total marks is required");
-      return;
-    }
-
-    if (students.length === 0) {
-      toast.error("No students found");
-      return;
-    }
-
-    // 🔒 PRE-VALIDATION (ALL OR NOTHING)
-    for (let student of students) {
-      if (absentMap[student._id]) continue;
-
-      const obtainedMarks = marks[student._id];
-      if (!Number.isFinite(obtainedMarks)) continue;
-
-      if (obtainedMarks > Number(totalMarks)) {
-        toast.error(
-          `${student.name}: Marks cannot be greater than ${totalMarks}`
-        );
-        return; // ⛔ STOP BEFORE ANY SAVE
-      }
-    }
-
-    setLoading(true);
-
-    try {
-      let testId = existingTestId;
-
-      // ✅ CREATE MODE: only if test does NOT exist
-      if (!existingTestId) {
-        const testRes = await API.post("/tests", {
-          standard,
-          subject,
-          testDate,
-          totalMarks: Number(totalMarks),
-        });
-
-        testId = testRes.data._id;
-
-        if (!testId) {
-          toast.error("Test creation failed");
-          return;
-        }
-      }
-
-      // ✅ SAVE / UPDATE MARKS
-      for (let student of students) {
-        const isAbsent = absentMap[student._id];
-
-        // find existing mark (if any) from previewData
-        const existingRow =
-          previewData?.[standard]?.find((r) => r.studentId === student._id) ||
-          null;
-
-        // ABSENT
-        if (isAbsent) {
-          if (existingRow?.markId) {
-            await API.put(`/marks/${existingRow.markId}`, {
-              status: "ABSENT",
-            });
-          } else {
-            await API.post("/marks", {
-              studentId: student._id,
-              testId,
-              status: "ABSENT",
-            });
-          }
-          continue;
-        }
-
-        const obtainedMarks = marks[student._id];
-
-        //skip if absent
-        if (absentMap[student._id]) continue;
-
-        //skip id empty
-        if (!Number.isFinite(obtainedMarks)) continue;
-        // Hard block
-
-        // PRESENT
-        if (existingRow?.markId) {
-          // update
-          await API.put(`/marks/${existingRow.markId}`, {
-            obtainedMarks,
-          });
-        } else {
-          // create
-          await API.post("/marks", {
-            studentId: student._id,
-            testId,
-            obtainedMarks,
-            status: "PRESENT",
-          });
-        }
-      }
-
-      // 🔄 Refresh preview
-      const previewRes = await API.get(
-        `/marks/pdf-by-date?testDate=${testDate}`
-      );
-
-      setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
-
-      toast.success(
-        existingTestId
-          ? "Marks updated successfully"
-          : "Marks saved successfully"
-      );
-
-      setMarks({});
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  //download pdf
-  const handleDownloadPDF = async () => {
-    if (!testDate) {
-      toast.error("Please select test date");
-      return;
-    }
-
-    try {
-      //fetxh row mark data from backend
-      const res = await API.get(`marks/pdf-by-date?testDate=${testDate}`);
-
-      // 2️⃣ Convert raw data → class-wise structure
-      const classWiseData = buildClassWiseDataWithAbsent(res.data);
-
-      // 3️⃣ Generate PDF
-      generateClassWisePDF(classWiseData);
-      toast.success("PDF downloaded successfully", { id: "pdf" });
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to generate PDF");
-    }
-  };
-
-  //edit marks
-  const startEdit = (row) => {
-    if (row.status === "ABSENT") {
-      toast.error("Cannot edit absent student");
-      return;
-    }
-    setEditingRow(row);
-    setEditValue(row.obtainedMarks ?? "");
-  };
-
-  const saveEdit = async () => {
-    if (!editingRow) return;
-
-    if (Number(editValue) > Number(editingRow.totalMarks)) {
-      toast.error("Marks cannot exceed total marks");
-      return;
-    }
-
-    await API.put(`/marks/${editingRow.markId}`, {
-      obtainedMarks: Number(editValue),
-    });
-
-    toast.success("Marks updated");
-
-    setEditingRow(null);
-
-    const previewRes = await API.get(`/marks/by-date?testDate=${testDate}`);
-    setPreviewData(
-      buildPreviewClassWiseData({
-        students,
-        marks: previewRes.data,
-      })
-    );
-  };
-
-  const toggleAbsent = (studentId) => {
-    setAbsentMap((prev) => {
-      const isAbsent = !prev[studentId];
-
-      return {
-        ...prev,
-        [studentId]: isAbsent,
-      };
-    });
-
-    //clear marks if absent
-    setMarks((prev) => {
+    setAbsentByStudent((prev) => {
       const copy = { ...prev };
       delete copy[studentId];
       return copy;
     });
   };
 
-  // const markAbsent = async (row) => {
-  //   try {
-  //     await API.put(`marks/${row.markId}`, {
-  //       status: "ABSENT",
-  //     });
+  const toggleAbsent = (studentId) => {
+    setAbsentByStudent((prev) => ({
+      ...prev,
+      [studentId]: !prev[studentId],
+    }));
 
-  //     toast.success(`${row.name} marked absent`);
+    setMarksByStudent((prev) => {
+      const copy = { ...prev };
+      delete copy[studentId];
+      return copy;
+    });
+  };
 
-  //     const previewRes = await API.get(
-  //       `/marks/pdf-by-date?testDate=${testDate}`
-  //     );
+  const toggleSpecial = (studentId) => {
+    const newSpecial = !specialByStudent[studentId];
+    setSpecialByStudent((prev) => ({
+      ...prev,
+      [studentId]: newSpecial,
+    }));
 
-  //     setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+    if (!newSpecial) {
+      setSubjectByStudent((prev) => {
+        const copy = { ...prev };
+        delete copy[studentId];
+        return copy;
+      });
+      setTotalMarksByStudent((prev) => {
+        const copy = { ...prev };
+        delete copy[studentId];
+        return copy;
+      });
+    }
+  };
 
-  //     // eslint-disable-next-line no-unused-vars
-  //   } catch (error) {
-  //     toast.error("Failed to mark absent");
-  //   }
-  // };
+  /* ---------------- SUBMIT ---------------- */
+  const handleSubmit = async () => {
+    if (!standard || !testDate) {
+      toast.error("Class and date required");
+      return;
+    }
+
+    if (!globalSubject || !globalTotalMarks) {
+      toast.error("Global subject & total marks required");
+      return;
+    }
+
+    setSavingMarks(true);
+
+    try {
+      const testRes = await API.post("/tests", {
+        standard,
+        testDate,
+      });
+
+      const testId = testRes.data._id;
+
+      for (const student of students) {
+        const isAbsent = absentByStudent[student._id];
+
+        const subject = specialByStudent[student._id]
+          ? subjectByStudent[student._id]
+          : globalSubject;
+
+        const totalMarks = specialByStudent[student._id]
+          ? totalMarksByStudent[student._id]
+          : globalTotalMarks;
+
+        const existingRow =
+          previewData?.[standard]?.find(
+            (row) => row.studentId === student._id
+          ) || null;
+
+        if (!subject || !totalMarks) {
+          toast.error(`${student.name}: Subject / total missing`);
+          return;
+        }
+
+        if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
+          toast.error(`${student.name}: Marks required`);
+          return;
+        }
+
+        const payload = {
+          studentId: student._id,
+          testId,
+          subject,
+          totalMarks,
+          obtainedMarks: isAbsent ? null : marksByStudent[student._id],
+          status: isAbsent ? "ABSENT" : "PRESENT",
+        };
+
+        if (existingRow?.markId) {
+          await API.put(`/marks/${existingRow.markId}`, payload);
+        } else {
+          await API.post("/marks", payload);
+        }
+      }
+
+      const previewRes = await API.get(
+        `/marks/pdf-by-date?testDate=${testDate}`
+      );
+      setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+
+      toast.success("Marks saved successfully");
+    } catch {
+      toast.error("Save failed");
+    } finally {
+      setSavingMarks(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    if (!testDate) {
+      toast.error("Please select test date");
+      return;
+    }
+    if (downloadingPDF) return;
+
+    const toastId = toast.loading("Generating PDF…");
+    setDownloadingPDF(true);
+
+    try {
+      const response = await API.get(
+        `/pdf/classwise-pdf?testDate=${testDate}`,
+        { responseType: "blob" }
+      );
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url);
+      toast.success("PDF generated successfully", { id: toastId });
+    } catch (error) {
+      toast.error("Failed to download PDF");
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
 
   return (
-    <div className="relative min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Marks Entry</h1>
-          <p className="text-gray-600 mt-1">Enter marks for students</p>
-
-          <Link
-            to="/add-student"
-            className="inline-flex items-center mt-4 text-blue-600 hover:text-blue-800 font-medium"
-          >
-            + Add New Student
-          </Link>
-          <Link
-            to="/students"
-            className="inline-flex items-center ml-20 mt-4 text-blue-600 hover:text-blue-800 font-medium"
-          >
-            + Student list
-          </Link>
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            <div>
+              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">
+                Marks Dashboard
+              </h1>
+              <p className="text-gray-600 text-sm md:text-base mt-1">
+                Enter and manage test marks
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+              <Link
+                to="/add-student"
+                className="inline-flex items-center px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Add Student</span>
+                <span className="sm:hidden">Add</span>
+              </Link>
+              <Link
+                to="/students"
+                className="inline-flex items-center px-3 md:px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">View Students</span>
+                <span className="sm:hidden">Students</span>
+              </Link>
+              <LogoutButton />
+            </div>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">
-            Select Class & Subject
+        {/* Global Controls Card */}
+        <div className="bg-white rounded-lg md:rounded-xl border border-gray-200 shadow-sm p-4 md:p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <BookOpen className="h-5 w-5 mr-2 text-blue-600" />
+            Test Configuration
           </h2>
 
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Standard
+                <Users className="h-4 w-4 inline mr-1" />
+                Class
               </label>
               <select
                 value={standard}
                 onChange={(e) => setStandard(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 md:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
-                <option value="">Select Standard</option>
-                {standards.map((s) => (
-                  <option key={s} value={s}>
-                    Class {s}
+                <option value="">Select Class</option>
+                {Object.keys(subjectsByStandard).map((std) => (
+                  <option key={std} value={std}>
+                    Class {std}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="flex-1">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Subject
+                <Calendar className="h-4 w-4 inline mr-1" />
+                Test Date
+              </label>
+              <input
+                type="date"
+                value={testDate}
+                onChange={(e) => setTestDate(e.target.value)}
+                className="w-full px-3 md:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Award className="h-4 w-4 inline mr-1" />
+                Global Subject
               </label>
               <select
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                value={globalSubject}
+                onChange={(e) => setGlobalSubject(e.target.value)}
+                className="w-full px-3 md:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 <option value="">Select Subject</option>
-                {subjects.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {subjectsByStandard[standard]?.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {sub}
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Total Marks
+              </label>
+              <input
+                type="number"
+                placeholder="Enter total marks"
+                value={globalTotalMarks}
+                onChange={(e) => setGlobalTotalMarks(Number(e.target.value))}
+                className="w-full px-3 md:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                min="1"
+              />
             </div>
           </div>
         </div>
 
-        {/* Loading State */}
-        {loading && (
-          <div className="text-center py-8">
-            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-            <p className="text-gray-600 mt-2">Loading students...</p>
-          </div>
-        )}
-
-        {existingTestId && (
-          <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
-            ℹ️ You are editing an existing test. Total marks are locked.
-          </div>
-        )}
-
-        {/* Students List */}
-        {students.length > 0 && !loading && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            {/* Test Details */}
-            <div className="mb-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">
-                Test Details
+        {/* Students List Card */}
+        {standard && (
+          <div className="bg-white rounded-lg md:rounded-xl border border-gray-200 shadow-sm p-4 md:p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Users className="h-5 w-5 mr-2 text-blue-600" />
+                Students List
+                <span className="ml-3 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  {students.length} students
+                </span>
               </h2>
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                  <input
-                    type="date"
-                    placeholder="Test Date"
-                    value={testDate}
-                    onChange={(e) => setTestDate(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="number"
-                    placeholder="Total marks"
-                    value={totalMarks}
-                    disabled={!!existingTestId}
-                    onChange={(e) => setTotalMarks(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
-                </div>
-              </div>
+              {loadingStudents && (
+                <div className="text-sm text-gray-500">Loading...</div>
+              )}
             </div>
 
-            {/* Students Table */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium text-gray-900">
-                  Students ({students.length})
-                </h2>
-                <div className="text-sm text-gray-500">
-                  Class {standard} • {subject}
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                        Student Name
-                      </th>
-                      <th className="py-3 px-4 text-left text-sm font-medium text-gray-700">
-                        Marks Obtained
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {students.map((student) => (
-                      <tr key={student._id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <div className="font-medium text-gray-900">
-                            {student.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            ID: {student._id.substring(0, 8)}...
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="number"
-                              value={marks[student._id] || ""}
-                              onChange={(e) =>
-                                handleMarkChange(student._id, e.target.value)
-                              }
-                              disabled={absentMap[student._id]}
-                              className={`w-24 px-3 py-2 border rounded-lg ${
-                                absentMap[student._id]
-                                  ? "bg-red-200 cursor-not-allowed"
-                                  : "border-gray-300"
-                              }`}
-                            />
-
-                            <label className="flex items-center gap-1 text-sm text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={!!absentMap[student._id]}
-                                onChange={() => toggleAbsent(student._id)}
-                              />
-                              Absent
-                            </label>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Submit Button */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <button
-                  onClick={handleSubmit}
-                  disabled={loading}
-                  className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            {students.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-600">
+                  No students found in Class {standard}
+                </p>
+                <Link
+                  to="/add-student"
+                  className="inline-flex items-center mt-3 text-blue-600 hover:text-blue-800 text-sm md:text-base"
                 >
-                  {loading ? "Saving..." : "Save All Marks"}
-                </button>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add students
+                </Link>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {students.map((student) => {
+                  const isAbsent = absentByStudent[student._id];
+                  const isSpecial = specialByStudent[student._id];
+                  const obtainedMarks = marksByStudent[student._id];
+                  const totalMarks = isSpecial
+                    ? totalMarksByStudent[student._id]
+                    : globalTotalMarks;
+                  const subject = isSpecial
+                    ? subjectByStudent[student._id]
+                    : globalSubject;
+
+                  return (
+                    <div
+                      key={student._id}
+                      className={`p-3 md:p-4 border rounded-lg transition-all ${
+                        isAbsent
+                          ? "border-red-200 bg-red-50"
+                          : isSpecial
+                          ? "border-purple-200 bg-purple-50"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+                        {/* Student Info */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-2">
+                            <h3 className="font-medium text-gray-900 text-sm md:text-base">
+                              {student.name}
+                            </h3>
+                            {student.isWeak && (
+                              <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">
+                                Weak
+                              </span>
+                            )}
+                          </div>
+                          {subject && (
+                            <span className="text-xs md:text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded inline-block mt-1">
+                              {subject}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Marks Input and Actions */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          {!isAbsent && (
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="number"
+                                placeholder="Marks"
+                                value={obtainedMarks || ""}
+                                onChange={(e) =>
+                                  handleMarkChange(student._id, e.target.value)
+                                }
+                                min="0"
+                                max={totalMarks || 100}
+                                className="w-20 md:w-24 px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                              />
+                              {totalMarks && (
+                                <span className="text-sm text-gray-600 whitespace-nowrap">
+                                  / {totalMarks}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => toggleAbsent(student._id)}
+                              className={`inline-flex items-center px-2 md:px-3 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${
+                                isAbsent
+                                  ? "bg-red-100 text-red-700 border border-red-300"
+                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              }`}
+                            >
+                              {isAbsent ? (
+                                <>
+                                  <XCircle className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                                  <span className="hidden sm:inline">
+                                    Absent
+                                  </span>
+                                  <span className="sm:hidden">Abs</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                                  <span className="hidden sm:inline">
+                                    Present
+                                  </span>
+                                  <span className="sm:hidden">Pre</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => toggleSpecial(student._id)}
+                              className={`inline-flex items-center px-2 md:px-3 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${
+                                isSpecial
+                                  ? "bg-purple-100 text-purple-700 border border-purple-300"
+                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              }`}
+                            >
+                              <Award className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                              <span className="hidden sm:inline">Special</span>
+                              <span className="sm:hidden">Sp</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Special Settings */}
+                      {isSpecial && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Custom Subject
+                              </label>
+                              <select
+                                value={subjectByStudent[student._id] || ""}
+                                onChange={(e) =>
+                                  setSubjectByStudent((prev) => ({
+                                    ...prev,
+                                    [student._id]: e.target.value,
+                                  }))
+                                }
+                                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-lg text-xs md:text-sm outline-none"
+                              >
+                                <option value="">Select subject</option>
+                                {subjectsByStandard[standard]?.map((sub) => (
+                                  <option key={sub} value={sub}>
+                                    {sub}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Custom Total Marks
+                              </label>
+                              <input
+                                type="number"
+                                placeholder="Total marks"
+                                value={totalMarksByStudent[student._id] || ""}
+                                onChange={(e) =>
+                                  setTotalMarksByStudent((prev) => ({
+                                    ...prev,
+                                    [student._id]: Number(e.target.value),
+                                  }))
+                                }
+                                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-lg text-xs md:text-sm outline-none"
+                                min="1"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Current Entry
+                              </label>
+                              <div className="text-xs md:text-sm font-medium text-gray-900 px-2 md:px-3 py-1.5 md:py-2 bg-gray-50 rounded-lg">
+                                {obtainedMarks || "0"}/
+                                {totalMarksByStudent[student._id] || "-"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && students.length === 0 && standard && subject && (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <p className="text-gray-600 mb-4">
-              No students found for this class and subject
-            </p>
-            <Link
-              to="/add-student"
-              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg"
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6 md:mb-8">
+          <button
+            onClick={handleSubmit}
+            disabled={
+              savingMarks ||
+              !standard ||
+              !testDate ||
+              !globalSubject ||
+              !globalTotalMarks
+            }
+            className="inline-flex items-center justify-center px-4 md:px-5 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm md:text-base"
+          >
+            {savingMarks ? (
+              <>
+                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 md:h-5 md:w-5 mr-2" />
+                Save All Marks
+              </>
+            )}
+          </button>
+
+          {Object.keys(previewData).length > 0 && (
+            <button
+              onClick={downloadPDF}
+              disabled={downloadingPDF}
+              className="inline-flex items-center justify-center px-4 md:px-5 py-2.5 md:py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm md:text-base"
             >
-              Add Students
-            </Link>
-          </div>
-        )}
+              {downloadingPDF ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 md:h-5 md:w-5 mr-2" />
+                  Download PDF
+                </>
+              )}
+            </button>
+          )}
+        </div>
 
+        {/* Preview Section - Shows ALL Students */}
         {Object.keys(previewData).length > 0 && (
-          <div>
-            <h2 className="text-lg font-bold mb-4">
-              Entered Marks Preview (Test Date: {testDate})
-            </h2>
+          <div className="bg-white rounded-lg md:rounded-xl border border-gray-200 shadow-sm p-4 md:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Calendar className="h-5 w-5 mr-2 text-blue-600" />
+                Preview for {testDate}
+              </h2>
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 md:px-3 py-1 rounded">
+                {Object.keys(previewData).length} class
+                {Object.keys(previewData).length !== 1 ? "es" : ""}
+              </span>
+            </div>
 
             {Object.entries(previewData).map(([std, rows]) => (
-              <div key={std} className="mb-6">
-                <h3 className="font-semibold text-gray-800 mb-2">
-                  Class {std}
-                </h3>
+              <div key={std} className="mb-6 last:mb-0">
+                <div className="flex items-center mb-3">
+                  <h3 className="font-medium text-gray-900 text-base md:text-lg">
+                    {std}
+                  </h3>
+                  <span className="ml-3 text-sm text-gray-500">
+                    {rows.length} student{rows.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
 
-                <table className="w-full text-sm border">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-2 text-left">Student</th>
-                      <th className="p-2 text-left">Subject</th>
-                      <th className="p-2 text-left">Marks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <tr
-                        key={i}
-                        className={`border-t ${
-                          r.marks === "ABSENT" ? "bg-red-200" : ""
-                        }`}
-                      >
-                        <td className="p-2">{r.name}</td>
-                        <td className="p-2">{r.subject}</td>
-                        <td className="p-2">
-                          {r.marks === "ABSENT" || r.marks === "-"
-                            ? "-"
-                            : r.marks}
-                        </td>
-
-                        <td>
-                          {/* {r.status !== "ABSENT" && (
-                            <input
-                              type="checkbox"
-                              onChange={() => markAbsent(r)}
-                            />
-                          )} */}
-                        </td>
-
-                        <td className="p-2">
-                          <button
-                            onClick={() => startEdit(r)}
-                            className="text-blue-600 hover:underline text-sm"
-                          >
-                            Edit
-                          </button>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full border border-gray-200">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="p-2 md:p-3 text-left text-sm font-medium text-gray-700">
+                          Student
+                        </th>
+                        <th className="p-2 md:p-3 text-left text-sm font-medium text-gray-700">
+                          Subject
+                        </th>
+                        <th className="p-2 md:p-3 text-left text-sm font-medium text-gray-700">
+                          Marks
+                        </th>
+                        <th className="p-2 md:p-3 text-left text-sm font-medium text-gray-700">
+                          Status
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rows.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="p-2 md:p-3">
+                            <div className="font-medium text-gray-900 text-sm md:text-base">
+                              {row.name}
+                            </div>
+                          </td>
+                          <td className="p-2 md:p-3 text-gray-600 text-sm md:text-base">
+                            {row.subject}
+                          </td>
+                          <td className="p-2 md:p-3">
+                            {row.marks === "ABSENT" ? (
+                              <span className="text-gray-400 text-sm md:text-base">
+                                -
+                              </span>
+                            ) : (
+                              <span className="font-medium text-gray-900 text-sm md:text-base">
+                                {row.marks}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 md:p-3">
+                            {row.marks === "ABSENT" ? (
+                              <span className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 rounded text-xs md:text-sm font-medium">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Absent
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs md:text-sm font-medium">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Present
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>
         )}
-
-        <button
-          onClick={handleDownloadPDF}
-          style={{ marginTop: 10 }}
-          className="px-4 py-2 bg-green-700 rounded-lg text-white"
-        >
-          Download Class-wise PDF
-        </button>
       </div>
-      {editingRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          {/* Modal box */}
-          <div className="w-72 p-4 border rounded-lg bg-blue-100 shadow-lg">
-            <h3 className="font-semibold mb-3 text-gray-800">
-              Edit Marks – {editingRow.name}
-            </h3>
-
-            <input
-              type="number"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              className="w-full border px-3 py-2 rounded mb-4"
-            />
-
-            <div className="flex justify-between gap-3">
-              <button
-                onClick={saveEdit}
-                className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700"
-              >
-                Save
-              </button>
-
-              <button
-                onClick={() => setEditingRow(null)}
-                className="flex-1 bg-gray-400 text-white py-2 rounded hover:bg-gray-500"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

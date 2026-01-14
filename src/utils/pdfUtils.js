@@ -2,72 +2,35 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import gujaratiFont from "./gujaratiFont";
 
-// PREVIEW BUILDER – shows "-" instead of Absent
-export const buildPreviewClassWiseData = ({ students, marks }) => {
-  const result = {};
-
-  students.forEach((student) => {
-    const std = student.standard;
-    if (!result[std]) result[std] = [];
-
-    const markEntry = marks.find(
-      (m) => m.studentId._id.toString() === student._id.toString()
-    );
-
-    let display;
-    let editable = true;
-
-    if (!markEntry) {
-      display = "-"; //not entered
-    } else if (markEntry.status === "ABSENT") {
-      display = "Absent";
-      editable = false;
-    } else {
-      display = `${markEntry.obtainedMarks} / ${markEntry.testId.totalMarks}`;
-    }
-
-    result[std].push({
-      name: student.name,
-      subject: markEntry?.testId?.subject || "-",
-      markId: markEntry?._id || null,
-      status: markEntry?.status || "NOT_ENTERED",
-      marks: display,
-      editable,
-      totalMarks: markEntry?.testId?.totalMarks || 0,
-    });
-  });
-
-  return result;
-};
-
 // Convert raw marks → class-wise structure
 export const buildClassWiseDataWithAbsent = ({ tests, marks, students }) => {
   const result = {};
 
   tests.forEach((test) => {
-    const std = test.standard;
-    if (!result[std]) result[std] = [];
+    const standard = test.standard;
+    if (!result[standard]) result[standard] = [];
 
-    const classStudents = students.filter((s) => s.standard === std);
+    const classStudents = students.filter(
+      (student) => student.standard === standard
+    );
 
     classStudents.forEach((student) => {
-      const markEntry = marks.find(
+      const mark = marks.find(
         (m) =>
           m.studentId._id.toString() === student._id.toString() &&
           m.testId._id.toString() === test._id.toString()
       );
 
-      result[std].push({
+      result[standard].push({
         studentId: student._id,
         name: student.name,
-        subject: test.subject,
-        markId: markEntry?._id || null,
-        marks: markEntry
-          ? markEntry.status === "ABSENT"
+        subject: mark?.subject || "-",
+        marks: mark
+          ? mark.status === "ABSENT"
             ? "ABSENT"
-            : `${markEntry.obtainedMarks} / ${test.totalMarks}`
-          : "ABSENT",
-
+            : `${mark.obtainedMarks} / ${mark.totalMarks}`
+          : "-",
+        markId: mark?._id || null,
         testDate: test.testDate,
       });
     });
@@ -99,17 +62,20 @@ export const generateClassWisePDF = (classData) => {
     }
 
     doc.setFontSize(14);
-    doc.text(`ધોરણ  ${std}`, 14, currentY);
+    doc.text(`${std}`, 14, currentY);
     currentY += 6;
 
     autoTable(doc, {
       startY: currentY,
       head: [["Name", "Subjects", "Marks "]],
       body: rows.map((r) => [r.name, r.subject, r.marks]),
-      styles: { font: "Gujarati", fontSize: 10 },
+      styles: { font: "Gujarati", fontSize: 10, cellPadding: 3 },
       headStyles: {
         font: "Gujarati",
-        fontStyle : "normal"
+        fontStyle: "normal",
+      },
+      didParseCell: function (data) {
+        data.cell.styles.font = "Gujarati";
       },
     });
 
