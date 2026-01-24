@@ -98,7 +98,7 @@ const AddStudent = () => {
                 <option value="">Select Class</option>
                 {Object.keys(subjectsByStandard).map((std) => (
                   <option key={std} value={std}>
-                    Class {std}
+                    {std}
                   </option>
                 ))}
               </select>

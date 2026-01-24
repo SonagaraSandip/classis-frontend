@@ -215,6 +215,7 @@ const Dashboard = () => {
       const url = window.URL.createObjectURL(blob);
       window.open(url);
       toast.success("PDF generated successfully", { id: toastId });
+    // eslint-disable-next-line no-unused-vars
     } catch (error) {
       toast.error("Failed to download PDF");
     } finally {
@@ -279,7 +280,7 @@ const Dashboard = () => {
                 <option value="">Select Class</option>
                 {Object.keys(subjectsByStandard).map((std) => (
                   <option key={std} value={std}>
-                    Class {std}
+                    {std}
                   </option>
                 ))}
               </select>
@@ -446,7 +447,7 @@ const Dashboard = () => {
                                   <span className="hidden sm:inline">
                                     Absent
                                   </span>
-                                  <span className="sm:hidden">Abs</span>
+                                  <span className="sm:hidden">Absent</span>
                                 </>
                               ) : (
                                 <>
@@ -454,7 +455,7 @@ const Dashboard = () => {
                                   <span className="hidden sm:inline">
                                     Present
                                   </span>
-                                  <span className="sm:hidden">Pre</span>
+                                  <span className="sm:hidden">Present</span>
                                 </>
                               )}
                             </button>
@@ -469,7 +470,7 @@ const Dashboard = () => {
                             >
                               <Award className="h-3 w-3 md:h-4 md:w-4 mr-1" />
                               <span className="hidden sm:inline">Special</span>
-                              <span className="sm:hidden">Sp</span>
+                              <span className="sm:hidden">Special</span>
                             </button>
                           </div>
                         </div>
