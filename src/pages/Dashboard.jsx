@@ -195,33 +195,35 @@ const Dashboard = () => {
     }
   };
 
-  const downloadPDF = async () => {
-    if (!testDate) {
-      toast.error("Please select test date");
-      return;
-    }
-    if (downloadingPDF) return;
+ const downloadPDF = async () => {
+  setDownloadingPDF(true);
+  try {
+    const response = await API.get(
+      `/pdf/classwise-pdf?testDate=${testDate}`,
+      { responseType: "blob" }
+    );
 
-    const toastId = toast.loading("Generating PDF…");
-    setDownloadingPDF(true);
+    const blob = new Blob([response.data], {
+      type: "application/pdf",
+    });
 
-    try {
-      const response = await API.get(
-        `/pdf/classwise-pdf?testDate=${testDate}`,
-        { responseType: "blob" }
-      );
+    const url = window.URL.createObjectURL(blob);
 
-      const blob = new Blob([response.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-      window.open(url);
-      toast.success("PDF generated successfully", { id: toastId });
-    // eslint-disable-next-line no-unused-vars
-    } catch (error) {
-      toast.error("Failed to download PDF");
-    } finally {
-      setDownloadingPDF(false);
-    }
-  };
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Marks_${testDate}.pdf`; // ✅ custom filename
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch {
+    toast.error("Failed to download PDF");
+  } finally {
+    setDownloadingPDF(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
