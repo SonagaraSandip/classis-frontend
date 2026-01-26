@@ -48,6 +48,11 @@ const Dashboard = () => {
       .finally(() => setLoadingStudents(false));
   }, [standard]);
 
+  useEffect(() => {
+    setGlobalSubject("");
+    setGlobalTotalMarks("");
+  }, [standard]);
+
   /* ---------------- FETCH PREVIEW BY DATE ---------------- */
   useEffect(() => {
     if (!testDate) return;
@@ -120,110 +125,118 @@ const Dashboard = () => {
 
   /* ---------------- SUBMIT ---------------- */
   const handleSubmit = async () => {
-    if (!standard || !testDate) {
-      toast.error("Class and date required");
-      return;
-    }
+  if (!standard || !testDate) {
+    toast.error("Class and date required");
+    return;
+  }
 
-    if (!globalSubject || !globalTotalMarks) {
-      toast.error("Global subject & total marks required");
-      return;
-    }
+  if (!globalSubject || !globalTotalMarks) {
+    toast.error("Global subject & total marks required");
+    return;
+  }
 
-    setSavingMarks(true);
+  setSavingMarks(true);
 
-    try {
-      const testRes = await API.post("/tests", {
-        standard,
-        testDate,
-      });
-
-      const testId = testRes.data._id;
-
-      for (const student of students) {
-        const isAbsent = absentByStudent[student._id];
-
-        const subject = specialByStudent[student._id]
-          ? subjectByStudent[student._id]
-          : globalSubject;
-
-        const totalMarks = specialByStudent[student._id]
-          ? totalMarksByStudent[student._id]
-          : globalTotalMarks;
-
-        const existingRow =
-          previewData?.[standard]?.find(
-            (row) => row.studentId === student._id
-          ) || null;
-
-        if (!subject || !totalMarks) {
-          toast.error(`${student.name}: Subject / total missing`);
-          return;
-        }
-
-        if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
-          toast.error(`${student.name}: Marks required`);
-          return;
-        }
-
-        const payload = {
-          studentId: student._id,
-          testId,
-          subject,
-          totalMarks,
-          obtainedMarks: isAbsent ? null : marksByStudent[student._id],
-          status: isAbsent ? "ABSENT" : "PRESENT",
-        };
-
-        if (existingRow?.markId) {
-          await API.put(`/marks/${existingRow.markId}`, payload);
-        } else {
-          await API.post("/marks", payload);
-        }
-      }
-
-      const previewRes = await API.get(
-        `/marks/pdf-by-date?testDate=${testDate}`
-      );
-      setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
-
-      toast.success("Marks saved successfully");
-    } catch {
-      toast.error("Save failed");
-    } finally {
-      setSavingMarks(false);
-    }
-  };
-
- const downloadPDF = async () => {
-  setDownloadingPDF(true);
   try {
-    const response = await API.get(
-      `/pdf/classwise-pdf?testDate=${testDate}`,
-      { responseType: "blob" }
-    );
-
-    const blob = new Blob([response.data], {
-      type: "application/pdf",
+    // 1️⃣ Create / reuse test
+    const testRes = await API.post("/tests", {
+      standard,
+      testDate,
     });
 
-    const url = window.URL.createObjectURL(blob);
+    const testId = testRes.data._id;
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Marks_${testDate}.pdf`; // ✅ custom filename
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    // 2️⃣ Build all mark requests (PARALLEL)
+    const requests = students.map((student) => {
+      const isAbsent = absentByStudent[student._id];
 
-    window.URL.revokeObjectURL(url);
-  } catch {
-    toast.error("Failed to download PDF");
+      const subject = specialByStudent[student._id]
+        ? subjectByStudent[student._id]
+        : globalSubject;
+
+      const totalMarks = specialByStudent[student._id]
+        ? totalMarksByStudent[student._id]
+        : globalTotalMarks;
+
+      const existingRow =
+        previewData?.[standard]?.find(
+          (row) => row.studentId === student._id
+        ) || null;
+
+      if (!subject || !totalMarks) {
+        throw new Error(`${student.name}: Subject / total missing`);
+      }
+
+      if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
+        throw new Error(`${student.name}: Marks required`);
+      }
+
+      const payload = {
+        studentId: student._id,
+        testId,
+        subject,
+        totalMarks,
+        obtainedMarks: isAbsent ? null : marksByStudent[student._id],
+        status: isAbsent ? "ABSENT" : "PRESENT",
+      };
+
+      // return promise (DO NOT await here)
+      if (existingRow?.markId) {
+        return API.put(`/marks/${existingRow.markId}`, payload);
+      }
+
+      return API.post("/marks", payload);
+    });
+
+    // 3️⃣ Execute all requests together 🚀
+    await Promise.all(requests);
+
+    // 4️⃣ Refresh preview
+    const previewRes = await API.get(
+      `/marks/pdf-by-date?testDate=${testDate}`
+    );
+
+    setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+
+    toast.success("Marks saved successfully");
+  } catch (err) {
+    toast.error(err.message || "Save failed");
   } finally {
-    setDownloadingPDF(false);
+    setSavingMarks(false);
   }
 };
 
+
+  const downloadPDF = async () => {
+    const toastId = toast.loading("Generating PDF…");
+    setDownloadingPDF(true);
+    try {
+      const response = await API.get(
+        `/pdf/classwise-pdf?testDate=${testDate}`,
+        { responseType: "blob" },
+      );
+
+      const blob = new Blob([response.data], {
+        type: "application/pdf",
+      });
+
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Marks_${testDate}.pdf`; // ✅ custom filename
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+      toast.success("PDF downloaded", { id: toastId });
+    } catch {
+      toast.error("Failed to download PDF", { id: toastId });
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -386,8 +399,8 @@ const Dashboard = () => {
                         isAbsent
                           ? "border-red-200 bg-red-50"
                           : isSpecial
-                          ? "border-purple-200 bg-purple-50"
-                          : "border-gray-200 hover:bg-gray-50"
+                            ? "border-purple-200 bg-purple-50"
+                            : "border-gray-200 hover:bg-gray-50"
                       }`}
                     >
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
@@ -571,7 +584,7 @@ const Dashboard = () => {
           {Object.keys(previewData).length > 0 && (
             <button
               onClick={downloadPDF}
-              disabled={downloadingPDF}
+              disabled={downloadingPDF || !testDate || loadingStudents}
               className="inline-flex items-center justify-center px-4 md:px-5 py-2.5 md:py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm md:text-base"
             >
               {downloadingPDF ? (

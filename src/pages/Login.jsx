@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, User, Sparkles, Shield } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -10,6 +10,10 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    API.get("/health").catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (!key.trim()) {
