@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import API from "../api/api";
 import { subjectsByStandard } from "../utils/subjectsByStandard";
 import { buildClassWiseDataWithAbsent } from "../utils/pdfUtils";
+import { getGujaratiErrorMessage, gujaratiToast } from "../utils/gujaratiMessages";
 import {
   Calendar,
   Users,
@@ -44,7 +45,7 @@ const Dashboard = () => {
       .then((res) => {
         setStudents(res.data);
       })
-      .catch(() => toast.error("Failed to load students"))
+      .catch((err) => toast.error(getGujaratiErrorMessage(err, gujaratiToast.studentLoadError)))
       .finally(() => setLoadingStudents(false));
   }, [standard]);
 
@@ -65,8 +66,8 @@ const Dashboard = () => {
           return;
         }
         setPreviewData(buildClassWiseDataWithAbsent(res.data));
-      } catch {
-        toast.error("Failed to load preview");
+      } catch (err) {
+        toast.error(getGujaratiErrorMessage(err, "પ્રીવ્યૂ લાવવામાં સમસ્યા આવી."));
       }
     };
     fetchPreview();
@@ -125,90 +126,89 @@ const Dashboard = () => {
 
   /* ---------------- SUBMIT ---------------- */
   const handleSubmit = async () => {
-  if (!standard || !testDate) {
-    toast.error("Class and date required");
-    return;
-  }
+    if (!standard || !testDate) {
+      toast.error(gujaratiToast.selectStandard + " અને તારીખ પસંદ કરો.");
+      return;
+    }
 
-  if (!globalSubject || !globalTotalMarks) {
-    toast.error("Global subject & total marks required");
-    return;
-  }
+    if (!globalSubject || !globalTotalMarks) {
+      toast.error(gujaratiToast.selectSubject + " અને કુલ ગુણ દાખલ કરો.");
+      return;
+    }
 
-  setSavingMarks(true);
+    setSavingMarks(true);
 
-  try {
-    // 1️⃣ Create / reuse test
-    const testRes = await API.post("/tests", {
-      standard,
-      testDate,
-    });
+    try {
+      // 1️⃣ Create / reuse test
+      const testRes = await API.post("/tests", {
+        standard,
+        testDate,
+      });
 
-    const testId = testRes.data._id;
+      const testId = testRes.data._id;
 
-    // 2️⃣ Build all mark requests (PARALLEL)
-    const requests = students.map((student) => {
-      const isAbsent = absentByStudent[student._id];
+      // 2️⃣ Build all mark requests (PARALLEL)
+      const requests = students.map((student) => {
+        const isAbsent = absentByStudent[student._id];
 
-      const subject = specialByStudent[student._id]
-        ? subjectByStudent[student._id]
-        : globalSubject;
+        const subject = specialByStudent[student._id]
+          ? subjectByStudent[student._id]
+          : globalSubject;
 
-      const totalMarks = specialByStudent[student._id]
-        ? totalMarksByStudent[student._id]
-        : globalTotalMarks;
+        const totalMarks = specialByStudent[student._id]
+          ? totalMarksByStudent[student._id]
+          : globalTotalMarks;
 
-      const existingRow =
-        previewData?.[standard]?.find(
-          (row) => row.studentId === student._id
-        ) || null;
+        const existingRow =
+          previewData?.[standard]?.find(
+            (row) => row.studentId === student._id
+          ) || null;
 
-      if (!subject || !totalMarks) {
-        throw new Error(`${student.name}: Subject / total missing`);
-      }
+        if (!subject || !totalMarks) {
+          throw new Error(`${student.name}: વિષય અથવા કુલ ગુણ બાકી છે.`);
+        }
 
-      if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
-        throw new Error(`${student.name}: Marks required`);
-      }
+        if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
+          throw new Error(`${student.name}: મેળવેલ ગુણ દાખલ કરો.`);
+        }
 
-      const payload = {
-        studentId: student._id,
-        testId,
-        subject,
-        totalMarks,
-        obtainedMarks: isAbsent ? null : marksByStudent[student._id],
-        status: isAbsent ? "ABSENT" : "PRESENT",
-      };
+        const payload = {
+          studentId: student._id,
+          testId,
+          subject,
+          totalMarks,
+          obtainedMarks: isAbsent ? null : marksByStudent[student._id],
+          status: isAbsent ? "ABSENT" : "PRESENT",
+        };
 
-      // return promise (DO NOT await here)
-      if (existingRow?.markId) {
-        return API.put(`/marks/${existingRow.markId}`, payload);
-      }
+        // return promise (DO NOT await here)
+        if (existingRow?.markId) {
+          return API.put(`/marks/${existingRow.markId}`, payload);
+        }
 
-      return API.post("/marks", payload);
-    });
+        return API.post("/marks", payload);
+      });
 
-    // 3️⃣ Execute all requests together 🚀
-    await Promise.all(requests);
+      // 3️⃣ Execute all requests together 🚀
+      await Promise.all(requests);
 
-    // 4️⃣ Refresh preview
-    const previewRes = await API.get(
-      `/marks/pdf-by-date?testDate=${testDate}`
-    );
+      // 4️⃣ Refresh preview
+      const previewRes = await API.get(
+        `/marks/pdf-by-date?testDate=${testDate}`
+      );
 
-    setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+      setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
 
-    toast.success("Marks saved successfully");
-  } catch (err) {
-    toast.error(err.message || "Save failed");
-  } finally {
-    setSavingMarks(false);
-  }
-};
-
+      toast.success(gujaratiToast.marksSaved);
+    } catch (err) {
+      toast.error(getGujaratiErrorMessage(err, gujaratiToast.marksSaveError));
+    } finally {
+      setSavingMarks(false);
+    }
+  };
 
   const downloadPDF = async () => {
-    const toastId = toast.loading("Generating PDF…");
+    const toastId = toast.loading(gujaratiToast.pdfGenerating);
     setDownloadingPDF(true);
     try {
       const response = await API.get(
@@ -230,9 +230,9 @@ const Dashboard = () => {
       a.remove();
 
       window.URL.revokeObjectURL(url);
-      toast.success("PDF downloaded", { id: toastId });
-    } catch {
-      toast.error("Failed to download PDF", { id: toastId });
+      toast.success(gujaratiToast.pdfSuccess, { id: toastId });
+    } catch (err) {
+      toast.error(getGujaratiErrorMessage(err, gujaratiToast.pdfError), { id: toastId });
     } finally {
       setDownloadingPDF(false);
     }
