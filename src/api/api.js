@@ -1,8 +1,13 @@
 import axios from "axios";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:5000/api"
+    : "https://classis-backend.onrender.com/api");
+
 const API = axios.create({
-  baseURL: "https://classis-backend.onrender.com/api"
-  // baseURL: "http://localhost:5000/api",
+  baseURL: API_BASE_URL,
 });
 
 //attack token automatically to every request

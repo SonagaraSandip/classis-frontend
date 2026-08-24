@@ -75,8 +75,17 @@ const Dashboard = () => {
 
   /* ---------------- HANDLERS ---------------- */
   const handleMarkChange = (studentId, value) => {
+    if (value === "") {
+      setMarksByStudent((prev) => {
+        const copy = { ...prev };
+        delete copy[studentId];
+        return copy;
+      });
+      return;
+    }
+
     const numValue = Number(value);
-    if (numValue < 0) return;
+    if (isNaN(numValue) || numValue < 0) return;
 
     setMarksByStudent((prev) => ({
       ...prev,
@@ -147,9 +156,9 @@ const Dashboard = () => {
 
       const testId = testRes.data._id;
 
-      // 2️⃣ Build all mark requests (PARALLEL)
-      const requests = students.map((student) => {
-        const isAbsent = absentByStudent[student._id];
+      // 2️⃣ Build all mark entries
+      const payloadMarks = students.map((student) => {
+        const isAbsent = Boolean(absentByStudent[student._id]);
 
         const subject = specialByStudent[student._id]
           ? subjectByStudent[student._id]
@@ -159,38 +168,33 @@ const Dashboard = () => {
           ? totalMarksByStudent[student._id]
           : globalTotalMarks;
 
-        const existingRow =
-          previewData?.[standard]?.find(
-            (row) => row.studentId === student._id
-          ) || null;
-
         if (!subject || !totalMarks) {
           throw new Error(`${student.name}: વિષય અથવા કુલ ગુણ બાકી છે.`);
         }
 
-        if (!isAbsent && !Number.isFinite(marksByStudent[student._id])) {
+        const studentMark = marksByStudent[student._id];
+        if (!isAbsent && (studentMark === undefined || studentMark === null || !Number.isFinite(studentMark))) {
           throw new Error(`${student.name}: મેળવેલ ગુણ દાખલ કરો.`);
         }
 
-        const payload = {
-          studentId: student._id,
-          testId,
-          subject,
-          totalMarks,
-          obtainedMarks: isAbsent ? null : marksByStudent[student._id],
-          status: isAbsent ? "ABSENT" : "PRESENT",
-        };
-
-        // return promise (DO NOT await here)
-        if (existingRow?.markId) {
-          return API.put(`/marks/${existingRow.markId}`, payload);
+        if (!isAbsent && studentMark > totalMarks) {
+          throw new Error(`${student.name}: ગુણ કુલ ગુણ (${totalMarks}) કરતા વધુ ન હોઈ શકે.`);
         }
 
-        return API.post("/marks", payload);
+        return {
+          studentId: student._id,
+          subject,
+          totalMarks: Number(totalMarks),
+          obtainedMarks: isAbsent ? null : Number(studentMark),
+          status: isAbsent ? "ABSENT" : "PRESENT",
+        };
       });
 
-      // 3️⃣ Execute all requests together 🚀
-      await Promise.all(requests);
+      // 3️⃣ Fast atomic bulk save ⚡
+      await API.post("/marks/bulk", {
+        testId,
+        marks: payloadMarks,
+      });
 
       // 4️⃣ Refresh preview
       const previewRes = await API.get(
@@ -430,13 +434,17 @@ const Dashboard = () => {
                               <input
                                 type="number"
                                 placeholder="Marks"
-                                value={obtainedMarks || ""}
+                                value={
+                                  obtainedMarks !== undefined && obtainedMarks !== null
+                                    ? obtainedMarks
+                                    : ""
+                                }
                                 onChange={(e) =>
                                   handleMarkChange(student._id, e.target.value)
                                 }
                                 min="0"
                                 max={totalMarks || 100}
-                                className="w-20 md:w-24 px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                className="w-20 md:w-24 px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-semibold"
                               />
                               {totalMarks && (
                                 <span className="text-sm text-gray-600 whitespace-nowrap">
