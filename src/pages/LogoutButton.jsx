@@ -16,11 +16,12 @@ const LogoutButton = () => {
   return (
     <button
       onClick={handleLogout}
-      className="inline-flex items-center px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-semibold transition-colors shadow-xs"
-      title="લૉગઆઉટ કરો"
+      type="button"
+      className="w-full h-11 px-3 inline-flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 hover:text-rose-800 border border-rose-200/80 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-[0.98] cursor-pointer touch-target whitespace-nowrap"
+      title="લૉગઆઉટ કરો (Logout)"
     >
-      <LogOut className="h-3.5 w-3.5 mr-1" />
-      લૉગઆઉટ (Logout)
+      <LogOut className="h-4 w-4 flex-shrink-0 text-rose-600" />
+      <span>લૉગઆઉટ</span>
     </button>
   );
 };

@@ -1,24 +1,21 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { Suspense, lazy } from "react";
 import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import AddStudent from "./pages/AddStudent";
+import StudentList from "./pages/StudentsList";
+import StudentProfile from "./pages/StudentProfile";
+import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./pages/ProtectedRoute";
-import PageLoader from "./pages/PageLoader";
 
-// ✅ Lazy loaded pages
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const AddStudent = lazy(() => import("./pages/AddStudent"));
-const StudentList = lazy(() => import("./pages/StudentsList"));
-const StudentProfile = lazy(() => import("./pages/StudentProfile"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+import { StandardProvider } from "./context/StandardContext";
 
 function App() {
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" reverseOrder={false} />
+    <StandardProvider>
+      <BrowserRouter>
+        <Toaster position="top-right" reverseOrder={false} />
 
-      {/* Suspense handles lazy loading */}
-      <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<Login />} />
@@ -63,24 +60,8 @@ function App() {
           {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Suspense>
-      {/* <Routes>
-        <Route path="/" element={<Login />} />
-
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/add-student" element={<AddStudent />} />
-        <Route path="/students" element={<StudentList />} />
-        <Route path="/students/:id" element={<StudentProfile />} />
-        <Route path="/*" element={<NotFound />} />
-      </Routes> */}
-    </BrowserRouter>
+      </BrowserRouter>
+    </StandardProvider>
   );
 }
 

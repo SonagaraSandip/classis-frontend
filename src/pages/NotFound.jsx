@@ -10,9 +10,9 @@ const NotFound = () => {
 
       <Link
         to="/dashboard"
-        className="px-4 py-2 bg-blue-600 text-white rounded"
+        className="inline-flex items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl transition-all shadow-sm active:scale-[0.98]"
       >
-        Go to Dashboard
+        ડેશબોર્ડ પર જાઓ (Go to Dashboard)
       </Link>
     </div>
   );

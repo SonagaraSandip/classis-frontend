@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#312e81" flood-opacity="0.25" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#grad)" />
+  <g transform="translate(96, 96)" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)">
+    <!-- Shield / Book symbol -->
+    <path d="M160 32 L280 80 V200 C280 270 160 320 160 320 C160 320 40 270 40 200 V80 Z" fill="rgba(255,255,255,0.15)" />
+    <!-- Checkmark inside -->
+    <path d="M100 170 L140 210 L220 130" stroke="#38bdf8" stroke-width="28" />
+  </g>
+</svg>

@@ -5,10 +5,25 @@
 @tailwind utilities;
 
 @layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', 'Noto Sans Gujarati', sans-serif;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
     @apply antialiased text-slate-800 bg-slate-50 selection:bg-indigo-500 selection:text-white;
+  }
+
+  /* Optimize touch target sizes for all interactive elements on mobile */
+  button, a, input, select, textarea {
+    touch-action: manipulation;
   }
 }
 
@@ -23,23 +38,31 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.7);
+  background: rgba(148, 163, 184, 0.65);
 }
 
 /* Glassmorphic card styling */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-/* Micro-animations */
+/* Micro-animations & buttons */
+.btn-press {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.97);
+}
+
 .hover-lift {
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -51,6 +74,5 @@
 
 /* Touch friendly minimum target */
 .touch-target {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 42px;
 }

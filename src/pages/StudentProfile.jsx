@@ -228,12 +228,10 @@ const StudentProfile = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <Link
             to="/students"
-            className="inline-flex items-center text-slate-600 hover:text-indigo-600 font-medium text-xs sm:text-sm transition-colors group"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-2xs active:scale-[0.98] w-fit"
           >
-            <span className="p-1 rounded-lg bg-white border border-slate-200 group-hover:border-indigo-300 mr-2 shadow-2xs">
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </span>
-            વિદ્યાર્થી યાદી (Students Directory)
+            <ArrowLeft className="h-4 w-4 text-slate-500" />
+            <span>વિદ્યાર્થી યાદી (Back to Students)</span>
           </Link>
 
           {/* Quick Actions (Mobile Optimized) */}

@@ -10,14 +10,17 @@ import {
   Trash2,
   Search,
   X,
+  ChevronDown,
+  Layers,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import API from "../api/api";
 import EditStudentModal from "../components/EditStudentModal";
 import DeleteConfirmationModal from "../components/DeleteConfirmationModal";
+import ManageStandardsModal from "../components/ManageStandardsModal";
+import { useStandards } from "../context/StandardContext";
 import { getGujaratiErrorMessage, gujaratiToast } from "../utils/gujaratiMessages";
 
-// Color generator for lively student avatars
 const AVATAR_COLORS = [
   "bg-blue-100 text-blue-700 border-blue-200",
   "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -37,6 +40,9 @@ const getAvatarColor = (name = "") => {
 };
 
 const StudentList = () => {
+  const { standardNames } = useStandards();
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+
   const [students, setStudents] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState("all");
@@ -183,89 +189,108 @@ const StudentList = () => {
     return result;
   }, [students, selectedClass, searchQuery]);
 
-  const allClasses = Object.keys(students).sort();
+  const allClasses = useMemo(() => {
+    return Array.from(new Set([...standardNames, ...Object.keys(students)])).sort();
+  }, [standardNames, students]);
   const totalStudents = Object.values(students).flat().length;
   const filteredCount = Object.values(filteredStudents).flat().length;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-xs w-full">
-          <div className="inline-block h-9 w-9 animate-spin rounded-full border-3 border-blue-600 border-t-transparent"></div>
-          <p className="mt-3.5 text-gray-700 font-medium text-sm">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center bg-white p-8 rounded-3xl shadow-sm border border-slate-100 max-w-xs w-full">
+          <div className="inline-block h-10 w-10 animate-spin rounded-full border-3 border-blue-600 border-t-transparent" />
+          <p className="mt-4 text-slate-800 font-bold text-sm">
             વિદ્યાર્થીઓની યાદી લોડ થઈ રહી છે...
           </p>
-          <p className="text-gray-400 text-xs mt-1">Loading student directory</p>
+          <p className="text-slate-400 text-xs mt-1">Loading students</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header with Back Button */}
-        <div className="mb-6">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium text-sm mb-4 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            ડેશબોર્ડ પર પાછા જાઓ (Back to Dashboard)
-          </Link>
-
+    <div className="min-h-screen bg-slate-50 p-3 sm:p-6 lg:p-8">
+      <div className="max-w-6xl mx-auto space-y-5 sm:space-y-6">
+        {/* Navigation & Header */}
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              <div className="mb-3">
+                <Link
+                  to="/dashboard"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-2xs active:scale-[0.98]"
+                >
+                  <ArrowLeft className="h-4 w-4 text-slate-500" />
+                  <span>પાછા જાઓ (Back)</span>
+                </Link>
+              </div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 tracking-tight">
                 વિદ્યાર્થીઓની યાદી (Students Directory)
               </h1>
-              <p className="text-gray-600 text-sm mt-1">
-                બધા નોંધાયેલા વિદ્યાર્થીઓની યાદી, વિગતો સુધારો અથવા દૂર કરો
+              <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
+                બધા નોંધાયેલા વિદ્યાર્થીઓની માહિતી, વિગત સુધારો અથવા ડિલીટ કરો
               </p>
             </div>
-            <Link
-              to="/add-student"
-              className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium rounded-xl transition-all text-sm w-full sm:w-auto shadow-sm hover:shadow"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              નવો વિદ્યાર્થી ઉમેરો (Add Student)
-            </Link>
+
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setIsManageModalOpen(true)}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 border border-indigo-200/80 rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-2xs active:scale-[0.98] cursor-pointer touch-target"
+                title="ધોરણ અને વિષય મેનેજ કરો"
+              >
+                <Layers className="h-4 w-4 mr-1.5 flex-shrink-0 text-indigo-600" />
+                <span>ધોરણ / વિષય</span>
+              </button>
+              <Link
+                to="/add-student"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl transition-all text-xs sm:text-sm shadow-sm hover:shadow active:scale-[0.98] cursor-pointer touch-target"
+              >
+                <UserPlus className="h-4 w-4 mr-1.5" />
+                <span>નવો વિદ્યાર્થી ઉમેરો</span>
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Stats & Search Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {/* Total Stats Card */}
-          <div className="bg-white rounded-xl border border-gray-200/80 p-4 shadow-sm flex items-center">
-            <div className="h-12 w-12 bg-blue-100/80 rounded-xl flex items-center justify-center mr-3 text-blue-600 flex-shrink-0">
+        {/* Search & Filter Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+          {/* Total Count Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-sm flex items-center gap-3.5">
+            <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 border border-blue-100">
               <Users className="h-6 w-6" />
             </div>
             <div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-gray-900">{totalStudents}</span>
-                <span className="text-xs text-gray-500 font-medium">કુલ વિદ્યાર્થીઓ</span>
+                <span className="text-2xl font-black text-slate-900">
+                  {totalStudents}
+                </span>
+                <span className="text-xs font-semibold text-slate-500">
+                  કુલ વિદ્યાર્થીઓ
+                </span>
               </div>
-              <p className="text-gray-500 text-xs">
+              <p className="text-xs text-slate-400 font-medium">
                 {allClasses.length} ધોરણ ઉપલબ્ધ
               </p>
             </div>
           </div>
 
-          {/* Search by Name */}
-          <div className="bg-white rounded-xl border border-gray-200/80 p-3 shadow-sm flex items-center relative">
-            <Search className="h-4 w-4 text-gray-400 absolute left-4 pointer-events-none" />
+          {/* Search Input */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-2.5 shadow-sm flex items-center relative">
+            <Search className="h-4 w-4 text-slate-400 absolute left-4 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="નામથી શોધો... (Search by name)"
-              className="w-full pl-8 pr-8 py-2 text-sm bg-transparent outline-none placeholder-gray-400"
+              placeholder="વિદ્યાર્થીના નામથી શોધો..."
+              className="w-full h-10 pl-9 pr-9 text-xs sm:text-sm font-medium bg-transparent outline-none placeholder-slate-400 text-slate-800"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="text-gray-400 hover:text-gray-600 p-1 mr-1"
+                className="absolute right-3 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
                 aria-label="Clear search"
               >
                 <X className="h-4 w-4" />
@@ -274,12 +299,12 @@ const StudentList = () => {
           </div>
 
           {/* Filter by Standard */}
-          <div className="bg-white rounded-xl border border-gray-200/80 p-3 shadow-sm relative flex items-center">
-            <Filter className="h-4 w-4 text-gray-400 absolute left-4 pointer-events-none" />
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-2.5 shadow-sm relative flex items-center sm:col-span-2 lg:col-span-1">
+            <Filter className="h-4 w-4 text-slate-400 absolute left-4 pointer-events-none" />
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full pl-8 pr-4 py-2 border-0 bg-transparent text-sm font-medium text-gray-700 outline-none appearance-none cursor-pointer"
+              className="w-full h-10 pl-9 pr-8 bg-transparent text-xs sm:text-sm font-semibold text-slate-700 outline-none appearance-none cursor-pointer"
             >
               <option value="all">બધા ધોરણ (All Classes)</option>
               {allClasses.map((std) => (
@@ -288,15 +313,16 @@ const StudentList = () => {
                 </option>
               ))}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           </div>
         </div>
 
-        {/* Results Feedback Badge */}
+        {/* Filter Feedback */}
         {(selectedClass !== "all" || searchQuery) && (
-          <div className="mb-4 flex items-center justify-between text-xs text-gray-600 bg-blue-50/70 border border-blue-100 px-3.5 py-2 rounded-lg">
+          <div className="flex items-center justify-between text-xs text-slate-600 bg-blue-50/80 border border-blue-100/90 px-4 py-2.5 rounded-xl">
             <span>
-              પરિણામ: <strong className="text-gray-900">{filteredCount}</strong> વિદ્યાર્થી મળ્યા
-              {selectedClass !== "all" ? ` • ${selectedClass}` : ""}
+              પરિણામ: <strong className="text-slate-900">{filteredCount}</strong> વિદ્યાર્થી મળ્યા
+              {selectedClass !== "all" ? ` • ધોરણ: ${selectedClass}` : ""}
               {searchQuery ? ` • શોધ: "${searchQuery}"` : ""}
             </span>
             <button
@@ -304,32 +330,32 @@ const StudentList = () => {
                 setSelectedClass("all");
                 setSearchQuery("");
               }}
-              className="text-blue-600 hover:underline font-medium ml-2"
+              className="text-blue-600 hover:underline font-bold ml-2 cursor-pointer"
             >
-              ફિલ્ટર સાફ કરો (Clear)
+              ફિલ્ટર સાફ કરો
             </button>
           </div>
         )}
 
         {/* Students List */}
         {Object.keys(filteredStudents).length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-sm">
-            <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-10 sm:p-14 text-center shadow-sm">
+            <div className="h-16 w-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-400">
               <Users className="h-8 w-8" />
             </div>
-            <h3 className="text-base font-semibold text-gray-800 mb-1">
-              કોઈ વિદ્યાર્થી મળ્યો નથી (No Students Found)
+            <h3 className="text-base font-bold text-slate-900 mb-1">
+              કોઈ વિદ્યાર્થી મળ્યો નથી
             </h3>
-            <p className="text-gray-500 text-xs max-w-sm mx-auto mb-5">
+            <p className="text-slate-500 text-xs sm:text-sm max-w-sm mx-auto mb-5">
               {searchQuery
-                ? `"${searchQuery}" નામ સાથે મેળ ખાતો કોઈ વિદ્યાર્થી નથી.`
+                ? `"${searchQuery}" સાથે મેળ ખાતો કોઈ વિદ્યાર્થી નથી.`
                 : "હાલમાં આ વર્ગમાં કોઈ વિદ્યાર્થી ઉમેરાયેલ નથી."}
             </p>
             <Link
               to="/add-student"
-              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+              className="inline-flex items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors"
             >
-              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              <UserPlus className="h-4 w-4 mr-1.5" />
               નવો વિદ્યાર્થી ઉમેરો
             </Link>
           </div>
@@ -338,93 +364,89 @@ const StudentList = () => {
             {Object.entries(filteredStudents).map(([std, list]) => (
               <div
                 key={std}
-                className="bg-white rounded-2xl border border-gray-200/90 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
               >
                 {/* Class Header */}
-                <div className="px-5 py-3.5 border-b border-gray-200/80 bg-gray-50/80 flex items-center justify-between">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-blue-600"></span>
-                    <h2 className="text-base font-bold text-gray-900">
+                    <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900">
                       {std}
                     </h2>
                   </div>
-                  <span className="text-xs font-medium text-gray-600 bg-white border border-gray-200 px-2.5 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-3 py-0.5 rounded-full">
                     {list.length} વિદ્યાર્થી
                   </span>
                 </div>
 
-                {/* Students List Table */}
-                <div className="divide-y divide-gray-100">
+                {/* Students Row Cards */}
+                <div className="divide-y divide-slate-100">
                   {list.map((student) => {
                     const avatarStyle = getAvatarColor(student.name);
 
                     return (
                       <div
                         key={student._id}
-                        className="p-4 sm:px-5 hover:bg-blue-50/30 transition-colors"
+                        className="p-4 sm:px-5 hover:bg-slate-50/50 transition-colors"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           {/* Student Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3.5">
-                              {/* Colorful Avatar */}
-                              <div
-                                className={`h-11 w-11 rounded-xl border flex items-center justify-center flex-shrink-0 font-bold text-sm shadow-sm ${avatarStyle}`}
-                              >
-                                {student.name.charAt(0)}
-                              </div>
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <div
+                              className={`h-11 w-11 rounded-xl border flex items-center justify-center flex-shrink-0 font-bold text-sm shadow-2xs ${avatarStyle}`}
+                            >
+                              {student.name.charAt(0)}
+                            </div>
 
-                              {/* Details */}
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-gray-900 text-base truncate hover:text-blue-600 transition-colors">
-                                  <Link to={`/students/${student._id}`}>
-                                    {student.name}
-                                  </Link>
-                                </h3>
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
-                                  <span className="font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                                    {student.standard}
-                                  </span>
-                                  {student.parentPhone && (
-                                    <span>📞 {student.parentPhone}</span>
-                                  )}
-                                </div>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate hover:text-blue-600 transition-colors">
+                                <Link to={`/students/${student._id}`}>
+                                  {student.name}
+                                </Link>
+                              </h3>
+                              <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
+                                <span className="font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                  {student.standard}
+                                </span>
+                                {student.parentPhone && (
+                                  <span>📞 {student.parentPhone}</span>
+                                )}
                               </div>
                             </div>
                           </div>
 
-                          {/* Action Buttons */}
-                          <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0 flex-wrap">
-                            {/* View Profile */}
+                          {/* Action Buttons with standard proper size & touch targets */}
+                          <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                            {/* View Profile Button */}
                             <Link
                               to={`/students/${student._id}`}
-                              className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 font-medium rounded-lg transition-colors text-xs border border-blue-100"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-xl text-xs border border-blue-200/80 transition-all active:scale-[0.98] cursor-pointer touch-target"
                               title="પ્રોફાઇલ અને માર્ક્સ જુઓ"
                             >
                               <Eye className="h-3.5 w-3.5 mr-1" />
-                              જુઓ (View)
+                              <span>જુઓ</span>
                             </Link>
 
-                            {/* Edit Student */}
+                            {/* Edit Student Button */}
                             <button
                               type="button"
                               onClick={() => setEditingStudent(student)}
-                              className="inline-flex items-center px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 active:bg-amber-200 font-medium rounded-lg transition-colors text-xs border border-amber-100"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold rounded-xl text-xs border border-amber-200/80 transition-all active:scale-[0.98] cursor-pointer touch-target"
                               title="વિગત સુધારો"
                             >
                               <Edit2 className="h-3.5 w-3.5 mr-1" />
-                              સુધારો (Edit)
+                              <span>સુધારો</span>
                             </button>
 
-                            {/* Delete Student */}
+                            {/* Delete Student Button */}
                             <button
                               type="button"
                               onClick={() => setDeletingStudent(student)}
-                              className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200 font-medium rounded-lg transition-colors text-xs border border-red-100"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-xl text-xs border border-rose-200/80 transition-all active:scale-[0.98] cursor-pointer touch-target"
                               title="વિદ્યાર્થી ડિલીટ કરો"
                             >
                               <Trash2 className="h-3.5 w-3.5 mr-1" />
-                              ડિલીટ (Delete)
+                              <span>ડિલીટ</span>
                             </button>
                           </div>
                         </div>
@@ -434,13 +456,6 @@ const StudentList = () => {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Footer Info */}
-        {totalStudents > 0 && (
-          <div className="mt-8 text-center text-xs text-gray-500">
-            કુલ {totalStudents} વિદ્યાર્થીઓમાંથી {filteredCount} વિદ્યાર્થી દર્શાવેલ છે
           </div>
         )}
       </div>
@@ -462,6 +477,12 @@ const StudentList = () => {
         onClose={() => setDeletingStudent(null)}
         onConfirm={handleConfirmDelete}
         loading={actionLoading}
+      />
+
+      {/* Manage Standards Modal */}
+      <ManageStandardsModal
+        isOpen={isManageModalOpen}
+        onClose={() => setIsManageModalOpen(false)}
       />
     </div>
   );
