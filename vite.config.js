@@ -76,5 +76,14 @@ export default defineConfig({
     target: 'esnext',
     cssCodeSplit: true,
     chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-icons': ['lucide-react', 'react-icons'],
+          'vendor-utils': ['axios', 'react-hot-toast'],
+        },
+      },
+    },
   },
 })

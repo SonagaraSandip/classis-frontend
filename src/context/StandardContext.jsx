@@ -6,7 +6,16 @@ import { getGujaratiErrorMessage } from "../utils/gujaratiMessages";
 
 const StandardContext = createContext(null);
 
-const getDefaultStandardsList = () => {
+const getInitialStandards = () => {
+  try {
+    const cached = sessionStorage.getItem("cached_standards");
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    // Ignore storage parse error
+  }
   return Object.entries(defaultSubjectsMap).map(([name, subjects], index) => ({
     _id: `default_${index}_${encodeURIComponent(name)}`,
     name,
@@ -17,7 +26,7 @@ const getDefaultStandardsList = () => {
 };
 
 export const StandardProvider = ({ children }) => {
-  const [standardsList, setStandardsList] = useState(getDefaultStandardsList);
+  const [standardsList, setStandardsList] = useState(getInitialStandards);
   const [loading, setLoading] = useState(false);
 
   // Fetch standards from API
@@ -30,8 +39,9 @@ export const StandardProvider = ({ children }) => {
       const res = await API.get("/standards");
       if (Array.isArray(res.data) && res.data.length > 0) {
         setStandardsList(res.data);
-      } else {
-        setStandardsList(getDefaultStandardsList());
+        try {
+          sessionStorage.setItem("cached_standards", JSON.stringify(res.data));
+        } catch (e) {}
       }
     } catch (err) {
       console.error("Error fetching standards:", err);
