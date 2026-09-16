@@ -8,6 +8,8 @@ import { getGujaratiErrorMessage, gujaratiToast } from "../utils/gujaratiMessage
 import { useStandards } from "../context/StandardContext";
 import ManageStandardsModal from "../components/ManageStandardsModal";
 import InstallPwaBanner from "../components/InstallPwaBanner";
+import RecentTestHistory from "../components/RecentTestHistory";
+import TestPreviewModal from "../components/TestPreviewModal";
 import {
   Calendar,
   Users,
@@ -44,6 +46,12 @@ const Dashboard = () => {
   const [savingMarks, setSavingMarks] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
+
+  // Recent 3 Test History & Preview Modal States 🕒
+  const [previewModalDate, setPreviewModalDate] = useState(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [downloadingHistoryDate, setDownloadingHistoryDate] = useState(null);
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0);
 
   // In-memory caching for super-fast standard switching ⚡
   const studentsCacheRef = useRef({});
@@ -251,12 +259,13 @@ const Dashboard = () => {
         marks: payloadMarks,
       });
 
-      // 4️⃣ Refresh preview
+      // 4️⃣ Refresh preview & history
       const previewRes = await API.get(
         `/marks/pdf-by-date?testDate=${encodeURIComponent(testDate)}`
       );
 
       setPreviewData(buildClassWiseDataWithAbsent(previewRes.data));
+      setHistoryRefreshTrigger((prev) => prev + 1);
 
       toast.success(gujaratiToast.marksSaved);
     } catch (err) {
@@ -266,17 +275,22 @@ const Dashboard = () => {
     }
   };
 
-  const downloadPDF = async () => {
-    if (!testDate) {
+  const downloadPDFForDate = async (targetDate) => {
+    const dateToUse = targetDate || testDate;
+    if (!dateToUse) {
       toast.error("તારીખ પસંદ કરો.");
       return;
     }
 
     const toastId = toast.loading(gujaratiToast.pdfGenerating);
-    setDownloadingPDF(true);
+    setDownloadingHistoryDate(dateToUse);
+    if (dateToUse === testDate) {
+      setDownloadingPDF(true);
+    }
+
     try {
       const response = await API.get(
-        `/pdf/classwise-pdf?testDate=${encodeURIComponent(testDate)}`,
+        `/pdf/classwise-pdf?testDate=${encodeURIComponent(dateToUse)}`,
         { responseType: "blob" }
       );
 
@@ -287,7 +301,7 @@ const Dashboard = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Marks_${testDate}.pdf`;
+      a.download = `Marks_${dateToUse}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -299,8 +313,18 @@ const Dashboard = () => {
         id: toastId,
       });
     } finally {
+      setDownloadingHistoryDate(null);
       setDownloadingPDF(false);
     }
+  };
+
+  const downloadPDF = () => {
+    downloadPDFForDate(testDate);
+  };
+
+  const handleViewHistoryTest = (date) => {
+    setPreviewModalDate(date);
+    setIsPreviewModalOpen(true);
   };
 
   const canSave =
@@ -823,6 +847,14 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* 🕒 Last 3 Test History Section (At bottom of dashboard) */}
+        <RecentTestHistory
+          onViewTest={handleViewHistoryTest}
+          onDownloadPDF={downloadPDFForDate}
+          downloadingDate={downloadingHistoryDate}
+          refreshTrigger={historyRefreshTrigger}
+        />
       </div>
 
       {/* 📱 Sticky Mobile Bottom Quick Save Bar (Visible when standard is chosen) */}
@@ -860,6 +892,18 @@ const Dashboard = () => {
       <ManageStandardsModal
         isOpen={isManageModalOpen}
         onClose={() => setIsManageModalOpen(false)}
+      />
+
+      {/* Test Preview Modal for viewing test breakdown */}
+      <TestPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => {
+          setIsPreviewModalOpen(false);
+          setPreviewModalDate(null);
+        }}
+        testDate={previewModalDate}
+        onDownloadPDF={downloadPDFForDate}
+        downloadingPDF={downloadingHistoryDate === previewModalDate}
       />
     </div>
   );
